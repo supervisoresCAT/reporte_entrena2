@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Entrena2 2026 · Reporte Auxiliares</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --ink:#161326;
+    --ink-soft:#5b5470;
+    --bg:#f6f5fc;
+    --card:#ffffff;
+    --line:#e7e3f7;
+    --teal:#6c5ce7;
+    --teal-dark:#4b3fc0;
+    --teal-soft:#ece9fb;
+    --pink:#ff3d81;
+    --pink-soft:#ffe3ee;
+    --amber:#ffb020;
+    --amber-soft:#fff2da;
+    --red:#ff3b5c;
+    --red-soft:#ffe1e8;
+    --turq-vivid:#00e0c6;
+    --turq-soft:#dcfaf6;
+    --turq-text:#00b39e;
+    --red-vivid:#ff2d55;
+    --tarea-color:#0090ff;
+    --tarea-soft:#e3f2ff;
+    --radius:12px;
+    --shadow:0 1px 2px rgba(22,19,38,.06), 0 10px 28px rgba(108,92,231,.10);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:'Inter',system-ui,-apple-system,sans-serif;
+    font-size:14px; line-height:1.45;
+  }
+  h1,h2,h3,.brand{font-family:'Space Grotesk',system-ui,sans-serif;}
+  #app{min-height:100vh; display:flex; flex-direction:column;}
+
+  header.topbar{
+    background:linear-gradient(120deg, var(--teal-dark) 0%, var(--teal) 55%, var(--pink) 130%);
+    color:#fff; padding:16px 24px;
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    flex-wrap:wrap;
+  }
+  header.topbar .brand{font-size:19px; font-weight:700; letter-spacing:.2px;}
+  header.topbar .brand small{display:block; font-size:11px; font-weight:500; opacity:.75; font-family:'Inter',sans-serif; letter-spacing:.4px; text-transform:uppercase;}
+  #connStatus{font-size:12px; padding:4px 10px; border-radius:20px; background:rgba(255,255,255,.12);}
+  #connStatus.ok{background:rgba(255,255,255,.18);}
+  #connStatus.bad{background:var(--red); }
+
+  nav.tabs{
+    display:flex; gap:2px; background:var(--card); padding:0 20px;
+    border-bottom:1px solid var(--line); overflow-x:auto;
+  }
+  nav.tabs button{
+    border:none; background:transparent; padding:14px 16px; font-size:13.5px;
+    font-weight:600; color:var(--ink-soft); cursor:pointer; white-space:nowrap;
+    border-bottom:3px solid transparent; font-family:inherit;
+  }
+  nav.tabs button.active{color:var(--teal-dark); border-bottom-color:var(--teal);}
+  nav.tabs button:hover{color:var(--teal-dark);}
+
+  main{padding:22px; max-width:1400px; width:100%; margin:0 auto; flex:1;}
+  .panel{display:none;}
+  .panel.active{display:block; animation:fade .18s ease;}
+  @keyframes fade{from{opacity:0; transform:translateY(2px)} to{opacity:1; transform:none}}
+
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+    padding:18px 20px; box-shadow:var(--shadow); margin-bottom:18px;
+  }
+  .card h2{margin:0 0 4px; font-size:17px;}
+  .card .sub{color:var(--ink-soft); font-size:12.5px; margin-bottom:14px;}
+
+  .row{display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;}
+  .field{display:flex; flex-direction:column; gap:5px; min-width:150px;}
+  .field label{font-size:11.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.3px;}
+  select,input[type=text],input[type=date],input[type=time],input[type=number],textarea{
+    border:1px solid var(--line); border-radius:7px; padding:8px 10px; font-size:13.5px;
+    font-family:inherit; background:#fff; color:var(--ink);
+  }
+  select:focus,input:focus,textarea:focus{outline:2px solid var(--teal); outline-offset:1px;}
+  textarea{resize:vertical; min-height:60px;}
+
+  .btn{
+    border:none; border-radius:7px; padding:9px 16px; font-weight:600; font-size:13px;
+    cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; gap:6px;
+  }
+  .btn-primary{background:var(--teal); color:#fff;}
+  .btn-primary:hover{background:var(--teal-dark);}
+  .btn-outline{background:#fff; color:var(--teal-dark); border:1px solid var(--teal);}
+  .btn-outline:hover{background:var(--teal-soft);}
+  .btn-danger{background:#fff; color:var(--red); border:1px solid var(--red);}
+  .btn-danger:hover{background:var(--red-soft);}
+  .btn-sm{padding:5px 10px; font-size:12px;}
+  .btn:disabled{opacity:.5; cursor:not-allowed;}
+
+  .radio-group{display:flex; gap:14px; flex-wrap:wrap;}
+  .radio-group label{display:flex; align-items:center; gap:6px; font-size:13px; font-weight:500; cursor:pointer;}
+
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th,td{padding:8px 10px; border-bottom:1px solid var(--line); text-align:left;}
+  th{background:var(--bg); font-size:11px; text-transform:uppercase; letter-spacing:.3px; color:var(--ink-soft); font-weight:700;}
+  tr:hover td{background:#fafcfc;}
+  .tag{display:inline-block; padding:2px 8px; border-radius:12px; font-size:11.5px; font-weight:600;}
+  .tag-vac{background:var(--amber-soft); color:#8a5a11;}
+  .tag-lic{background:var(--red-soft); color:#9c2f2f;}
+  .tag-ok{background:var(--teal-soft); color:var(--teal-dark);}
+  .tag-just{background:var(--turq-vivid); color:#053b38; font-weight:700;}
+  .tag-injust{background:var(--red-vivid); color:#fff; font-weight:700;}
+  .tag-tarea{background:var(--tarea-soft); color:var(--tarea-color); font-weight:600;}
+  .tag-nm{background:var(--red-soft); color:var(--red);}
+  .tag-bueno{background:var(--amber-soft); color:#96690a;}
+  .tag-mbueno{background:var(--turq-soft); color:var(--turq-text);}
+  .tag-exc{background:var(--teal-soft); color:var(--teal-dark);}
+  .hora-justificado{color:var(--turq-text); font-weight:800;}
+  .hora-injustificado{color:var(--red-vivid); font-weight:800;}
+  .cell-tarea{display:block; font-size:10px; font-weight:600; opacity:.85; margin-top:1px;}
+  .muted{color:var(--ink-soft);}
+  .empty{padding:30px; text-align:center; color:var(--ink-soft); font-size:13px;}
+
+  .grid-scroll{overflow-x:auto; border:1px solid var(--line); border-radius:8px;}
+  table.report{min-width:900px;}
+  table.report th, table.report td{white-space:nowrap; text-align:center;}
+  table.report td.name-col, table.report th.name-col{text-align:left; position:sticky; left:0; background:#fff; z-index:2; border-right:1px solid var(--line);}
+  table.report th.name-col{background:var(--bg); z-index:3;}
+
+  .toolbar{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;}
+  .pill-toggle{display:flex; border:1px solid var(--teal); border-radius:20px; overflow:hidden;}
+  .pill-toggle button{border:none; background:#fff; color:var(--teal-dark); padding:6px 14px; font-size:12.5px; font-weight:600; cursor:pointer; font-family:inherit;}
+  .pill-toggle button.active{background:var(--teal); color:#fff;}
+
+  .toast{
+    position:fixed; bottom:20px; right:20px; background:var(--ink); color:#fff;
+    padding:11px 18px; border-radius:8px; font-size:13px; box-shadow:var(--shadow);
+    opacity:0; transform:translateY(10px); transition:.25s; pointer-events:none; z-index:999;
+  }
+  .toast.show{opacity:1; transform:none;}
+  .toast.err{background:var(--red);}
+
+  .modal-bg{position:fixed; inset:0; background:rgba(22,35,46,.45); display:none; align-items:center; justify-content:center; z-index:100; padding:20px;}
+  .modal-bg.show{display:flex;}
+  .modal{background:#fff; border-radius:var(--radius); padding:22px; width:100%; max-width:420px; box-shadow:var(--shadow);}
+  .modal h3{margin:0 0 14px;}
+  .modal .row{margin-bottom:12px;}
+  .modal-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:16px;}
+
+  .inline-edit{border:1px solid transparent; background:transparent; padding:4px 6px; border-radius:5px; font-size:13px; width:100%;}
+  .inline-edit:hover, .inline-edit:focus{border-color:var(--line); background:#fff;}
+
+  .punt-toggle{display:flex; gap:5px;}
+  .punt-btn{
+    width:26px; height:26px; border-radius:6px; border:2px solid var(--line); background:#fff;
+    cursor:pointer; font-size:12px; display:inline-flex; align-items:center; justify-content:center;
+    color:transparent; padding:0;
+  }
+  .punt-btn.punt-turq{border-color:var(--turq-text);}
+  .punt-btn.punt-turq.active{background:var(--turq-text); border-color:var(--turq-text); color:#fff;}
+  .punt-btn.punt-red{border-color:var(--red-vivid);}
+  .punt-btn.punt-red.active{background:var(--red-vivid); border-color:var(--red-vivid); color:#fff;}
+  input.hora-justificado{color:var(--turq-text); font-weight:800;}
+  input.hora-injustificado{color:var(--red-vivid); font-weight:800;}
+
+  @media print{
+    header.topbar, nav.tabs, .no-print{display:none !important;}
+    body{background:#fff;}
+    main{padding:0; max-width:none;}
+    .card{box-shadow:none; border:none; padding:0;}
+    #panel-reporte .card{margin-bottom:8px;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header class="topbar">
+    <div class="brand">Entrena2 2026<small>Reporte de Auxiliares · CAT</small></div>
+    <span id="connStatus">conectando…</span>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="carga" class="active">Carga diaria</button>
+    <button data-tab="monitoreos">Monitoreos</button>
+    <button data-tab="inbox">Inbox y Devoluciones</button>
+    <button data-tab="auxiliares">Auxiliares</button>
+    <button data-tab="productividad">Productividad</button>
+    <button data-tab="reporte">Reporte</button>
+  </nav>
+
+  <main>
+
+    <!-- ===== TAB: CARGA DIARIA ===== -->
+    <section id="panel-carga" class="panel active">
+      <div class="card">
+        <h2>Cargar día</h2>
+        <div class="sub">Elegí la fecha y cargá a todo el equipo de una — igual que en la planilla.</div>
+        <div class="row">
+          <div class="field">
+            <label>Fecha</label>
+            <input type="date" id="cargaFecha">
+          </div>
+          <div class="field" style="min-width:auto;">
+            <button class="btn btn-outline" id="btnCopiarAyer">↺ Traer horarios del último día cargado</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="cargaAlertaCard" style="display:none;">
+        <div id="cargaAlerta"></div>
+      </div>
+
+      <div class="card">
+        <div id="cargaGridWrap"><div class="empty">Cargando…</div></div>
+        <div class="row" style="margin-top:18px;">
+          <button class="btn btn-primary" id="btnGuardarCarga">Guardar día</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="toolbar">
+          <h2 style="margin:0;">Historial por auxiliar</h2>
+          <div class="field" style="min-width:160px;">
+            <select id="cargaHistAuxiliar"></select>
+          </div>
+        </div>
+        <div id="cargaHistTable"><div class="empty">Elegí un auxiliar para ver su historial reciente.</div></div>
+      </div>
+    </section>
+
+    <!-- ===== TAB: MONITOREOS ===== -->
+    <section id="panel-monitoreos" class="panel">
+      <div class="card">
+        <div class="toolbar">
+          <h2 style="margin:0;">Monitoreos</h2>
+          <div class="row" style="margin:0;">
+            <div class="field">
+              <label>Auxiliar</label>
+              <select id="monAuxiliar"></select>
+            </div>
+            <div class="field">
+              <label>Año</label>
+              <select id="monAnio"></select>
+            </div>
+            <button class="btn btn-primary" id="btnNuevoMonitoreo" style="align-self:flex-end;">+ Agregar monitoreo</button>
+          </div>
+        </div>
+        <div id="monTable"><div class="empty">Sin monitoreos cargados todavía.</div></div>
+      </div>
+    </section>
+
+    <!-- ===== TAB: INBOX Y DEVOLUCIONES ===== -->
+    <section id="panel-inbox" class="panel">
+      <div class="card">
+        <div class="toolbar">
+          <h2 style="margin:0;">Inbox y Devoluciones</h2>
+          <div class="row" style="margin:0;">
+            <div class="field">
+              <label>Auxiliar</label>
+              <select id="inbAuxiliar"></select>
+            </div>
+            <div class="field">
+              <label>Año</label>
+              <select id="inbAnio"></select>
+            </div>
+            <button class="btn btn-primary" id="btnNuevoInbox" style="align-self:flex-end;">+ Agregar registro</button>
+          </div>
+        </div>
+        <div id="inbTable"><div class="empty">Sin registros cargados todavía.</div></div>
+      </div>
+    </section>
+
+    <!-- ===== TAB: AUXILIARES ===== -->
+    <section id="panel-auxiliares" class="panel">
+      <div class="card">
+        <h2>Auxiliares</h2>
+        <div class="sub">Editá nombres, activá/desactivá o agregá auxiliares nuevos cada año. Los históricos de un auxiliar desactivado se mantienen en los reportes.</div>
+        <div id="auxTable"></div>
+        <div class="row" style="margin-top:16px;">
+          <div class="field" style="min-width:220px;">
+            <label>Nuevo auxiliar</label>
+            <input type="text" id="auxNuevoNombre" placeholder="Nombre y apellido">
+          </div>
+          <button class="btn btn-primary" id="btnAgregarAux">Agregar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== TAB: PRODUCTIVIDAD ===== -->
+    <section id="panel-productividad" class="panel">
+      <div class="card">
+        <div class="toolbar">
+          <h2 style="margin:0;">Productividad y Detalle TMO</h2>
+          <div class="row" style="margin:0;">
+            <div class="field">
+              <label>Auxiliar</label>
+              <select id="prodAuxiliar"></select>
+            </div>
+            <div class="field">
+              <label>Año</label>
+              <select id="prodAnio"></select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-bottom:2px;">Productividad mensual</h2>
+        <div class="sub">TMO, llamados, gestiones digitales y actividad de datos por mes.</div>
+        <div class="grid-scroll">
+          <table id="prodTablaProductividad"></table>
+        </div>
+        <div class="row" style="margin-top:14px;">
+          <button class="btn btn-primary" id="btnGuardarProductividad">Guardar productividad</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-bottom:2px;">Detalle TMO mensual</h2>
+        <div class="sub">ATT, ACW, HOLD y TMO por mes.</div>
+        <div class="grid-scroll">
+          <table id="prodTablaTMO"></table>
+        </div>
+        <div class="row" style="margin-top:14px;">
+          <button class="btn btn-primary" id="btnGuardarTMO">Guardar detalle TMO</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== TAB: REPORTE ===== -->
+    <section id="panel-reporte" class="panel">
+      <div class="card no-print">
+        <div class="toolbar">
+          <h2 style="margin:0;">Reporte</h2>
+          <div class="row" style="margin:0;">
+            <div class="field">
+              <label>Año</label>
+              <select id="repAnio"></select>
+            </div>
+            <div class="field">
+              <label>Mes</label>
+              <select id="repMes"></select>
+            </div>
+            <div class="field">
+              <label>Auxiliar</label>
+              <select id="repAuxiliar"><option value="todos">Todos</option></select>
+            </div>
+            <div class="field">
+              <label>Ver</label>
+              <div class="pill-toggle" id="repIncluirInactivos">
+                <button data-v="activos" class="active">Solo activos</button>
+                <button data-v="todos">Todos</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <button class="btn btn-outline" id="btnExportExcel">⬇ Exportar Excel</button>
+          <button class="btn btn-outline" id="btnExportPDF">⬇ Exportar PDF</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 style="margin-bottom:2px;">Conexión y desconexión</h2>
+        <div class="sub" id="repSubtitle"></div>
+        <div class="grid-scroll">
+          <table class="report" id="repGridConexion"></table>
+        </div>
+      </div>
+
+      <div class="card no-print">
+        <h2>Resumen de monitoreos e inbox / devoluciones</h2>
+        <div class="grid-scroll">
+          <table id="repGridResumen"></table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   CONFIG — completá con los datos de tu proyecto Supabase
+   ========================================================= */
+const SUPABASE_URL = "https://vadqwxrbonrbohvbeqdo.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_8oUx8EJHl67PKy2gIJYvWA_wjX9AhDe";
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const ESTADOS_ESPECIALES = ["Vacaciones","Licencia Medica","Franco","Ausente","Otro"];
+const TAREAS = ["Atencion Telefonica","Comunidad Digital","Planes JS","Linea 7075"];
+const TAREA_ABBR = {"Atencion Telefonica":"AT","Comunidad Digital":"CD","Planes JS":"PJS","Linea 7075":"L75"};
+
+let AUXILIARES = []; // {id, nombre, activo, orden}
+
+/* ---------- helpers ---------- */
+function toast(msg, isErr){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=> t.classList.remove('show'), 3200);
+}
+function fmtFecha(d){
+  const dt = new Date(d + 'T00:00:00');
+  return dt.toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric'});
+}
+function pad(n){ return String(n).padStart(2,'0'); }
+function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function daysInMonth(anio, mesIdx){ return new Date(anio, mesIdx+1, 0).getDate(); }
+function auxNombre(id){ const a = AUXILIARES.find(x=>x.id===id); return a ? a.nombre : '—'; }
+
+const PUNTAJE_CLASS = { 'Necesita Mejorar':'tag-nm', 'Bueno':'tag-bueno', 'Muy Bueno':'tag-mbueno', 'Excelente':'tag-exc' };
+function puntajeTag(p){
+  if(!p) return '<span class="muted">—</span>';
+  return `<span class="tag ${PUNTAJE_CLASS[p] || 'tag-ok'}">${p}</span>`;
+}
+
+function openModal(html){
+  document.getElementById('modalContent').innerHTML = html;
+  document.getElementById('modalBg').classList.add('show');
+}
+function closeModal(){ document.getElementById('modalBg').classList.remove('show'); }
+document.getElementById('modalBg').addEventListener('click', e=>{
+  if(e.target.id === 'modalBg') closeModal();
+});
+
+/* ---------- tabs ---------- */
+document.querySelectorAll('nav.tabs button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
+    if(btn.dataset.tab === 'reporte') renderReporte();
+    if(btn.dataset.tab === 'productividad'){ renderProductividad(); renderTMO(); }
+  });
+});
+
+/* =========================================================
+   CARGA DE AUXILIARES (compartido en toda la app)
+   ========================================================= */
+async function loadAuxiliares(){
+  const { data, error } = await sb.from('entrena2_auxiliares').select('*').order('orden', {ascending:true}).order('nombre', {ascending:true});
+  if(error){ toast('Error cargando auxiliares: ' + error.message, true); return; }
+  AUXILIARES = data || [];
+  fillAuxiliarSelects();
+}
+
+function fillAuxiliarSelects(soloActivos=true){
+  const targets = ['cargaHistAuxiliar','monAuxiliar','inbAuxiliar','prodAuxiliar'];
+  targets.forEach(id=>{
+    const sel = document.getElementById(id);
+    const prev = sel.value;
+    sel.innerHTML = '';
+    AUXILIARES.filter(a=> soloActivos ? a.activo : true).forEach(a=>{
+      const opt = document.createElement('option');
+      opt.value = a.id; opt.textContent = a.nombre + (a.activo ? '' : ' (inactivo)');
+      sel.appendChild(opt);
+    });
+    if(prev) sel.value = prev;
+  });
+  renderAuxiliaresTable();
+  renderCargaGrid(document.getElementById('cargaFecha').value);
+  fillRepAuxiliarSelect();
+}
+
+/* =========================================================
+   TAB: CARGA DIARIA (formato lista: todo el equipo, un día a la vez)
+   ========================================================= */
+document.getElementById('cargaFecha').value = todayISO();
+document.getElementById('cargaFecha').addEventListener('change', ()=>{
+  renderCargaGrid(document.getElementById('cargaFecha').value);
+});
+
+async function renderCargaGrid(fecha){
+  const wrap = document.getElementById('cargaGridWrap');
+  if(!fecha) return;
+  wrap.innerHTML = '<div class="empty">Cargando…</div>';
+  const activos = AUXILIARES.filter(a=>a.activo);
+  if(!activos.length){ wrap.innerHTML = '<div class="empty">No hay auxiliares activos. Agregá alguno en la pestaña Auxiliares.</div>'; return; }
+
+  const { data: existentes, error } = await sb.from('entrena2_conexiones').select('*').eq('fecha', fecha);
+  if(error){ wrap.innerHTML = '<div class="empty">Error cargando datos del día.</div>'; return; }
+  const porAux = {};
+  (existentes||[]).forEach(r=> porAux[r.auxiliar_id] = r);
+
+  const isSunday = new Date(fecha + 'T00:00:00').getDay() === 0;
+
+  const rows = activos.map(a=>{
+    const r = porAux[a.id];
+    let estado = 'trabajo', hc = '', hd = '', detalle = '';
+    if(r){
+      if(r.estado_especial){
+        estado = ESTADOS_ESPECIALES.includes(r.estado_especial) ? r.estado_especial : 'Otro';
+        if(estado === 'Otro') detalle = r.estado_especial;
+      } else {
+        estado = 'trabajo';
+        hc = r.hora_conexion ? r.hora_conexion.slice(0,5) : '';
+        hd = r.hora_desconexion ? r.hora_desconexion.slice(0,5) : '';
+      }
+    } else if(isSunday){
+      estado = 'Franco';
+    }
+    const estadoOpts = ['trabajo', ...ESTADOS_ESPECIALES].map(v=>
+      `<option value="${v}" ${v===estado?'selected':''}>${v==='trabajo'?'Trabajó':v}</option>`).join('');
+    const tareaSel = r && r.tarea ? r.tarea : '';
+    const tareaOpts = ['', ...TAREAS].map(v=>
+      `<option value="${v}" ${v===tareaSel?'selected':''}>${v || '— Elegir tarea —'}</option>`).join('');
+    const puntSel = r && r.estado_horario ? r.estado_horario : 'normal';
+    const hcCls = puntSel === 'justificado' ? 'hora-justificado' : (puntSel === 'injustificado' ? 'hora-injustificado' : '');
+    return `
+      <tr data-aux="${a.id}" data-punt="${puntSel}">
+        <td class="name-col">${a.nombre}</td>
+        <td><select class="cg-estado" onchange="cgToggleFila(${a.id}, this.value)">${estadoOpts}</select></td>
+        <td><input type="time" class="cg-hc ${hcCls}" value="${hc}" ${estado!=='trabajo'?'style="display:none;"':''}></td>
+        <td><input type="time" class="cg-hd ${hcCls}" value="${hd}" ${estado!=='trabajo'?'style="display:none;"':''}></td>
+        <td><select class="cg-tarea" ${estado!=='trabajo'?'style="display:none;"':''}>${tareaOpts}</select></td>
+        <td class="cg-punt-cell" ${estado!=='trabajo'?'style="display:none;"':''}>
+          <div class="punt-toggle">
+            <button type="button" class="punt-btn punt-turq ${puntSel==='justificado'?'active':''}" title="Fuera de horario justificado" onclick="cgSetPunt(${a.id},'justificado')">✓</button>
+            <button type="button" class="punt-btn punt-red ${puntSel==='injustificado'?'active':''}" title="Fuera de horario sin justificar" onclick="cgSetPunt(${a.id},'injustificado')">✕</button>
+          </div>
+        </td>
+        <td><input type="text" class="cg-detalle" placeholder="Detalle" value="${detalle}" ${estado!=='Otro'?'style="display:none;"':''}></td>
+      </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="grid-scroll">
+    <table>
+      <thead><tr><th class="name-col">Auxiliar</th><th>Estado</th><th>Conexión</th><th>Desconexión</th><th>Tarea</th><th>Marcar</th><th>Detalle</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    </div>${isSunday ? '<div class="sub" style="margin-top:8px;">Domingo: se precargó "Franco" para quien no tenía datos. Podés cambiarlo fila por fila.</div>' : ''}
+    <div class="sub" style="margin-top:8px;">✓ turquesa = fuera de horario justificado · ✕ rojo = fuera de horario sin justificar. Tocá de nuevo el mismo botón para sacar la marca.</div>`;
+
+  checkAlertaSemana();
+}
+
+function cgSetPunt(auxId, valor){
+  const tr = document.querySelector(`#cargaGridWrap tr[data-aux="${auxId}"]`);
+  if(!tr) return;
+  const actual = tr.dataset.punt || 'normal';
+  const nuevo = actual === valor ? 'normal' : valor;
+  tr.dataset.punt = nuevo;
+  tr.querySelector('.punt-turq').classList.toggle('active', nuevo === 'justificado');
+  tr.querySelector('.punt-red').classList.toggle('active', nuevo === 'injustificado');
+  const hcCls = nuevo === 'justificado' ? 'hora-justificado' : (nuevo === 'injustificado' ? 'hora-injustificado' : '');
+  ['cg-hc','cg-hd'].forEach(cls=>{
+    const input = tr.querySelector('.' + cls);
+    input.classList.remove('hora-justificado','hora-injustificado');
+    if(hcCls) input.classList.add(hcCls);
+  });
+}
+
+function cgToggleFila(auxId, estado){
+  const tr = document.querySelector(`#cargaGridWrap tr[data-aux="${auxId}"]`);
+  if(!tr) return;
+  const esTrabajo = estado === 'trabajo';
+  tr.querySelector('.cg-hc').style.display = esTrabajo ? '' : 'none';
+  tr.querySelector('.cg-hd').style.display = esTrabajo ? '' : 'none';
+  tr.querySelector('.cg-tarea').style.display = esTrabajo ? '' : 'none';
+  tr.querySelector('.cg-punt-cell').style.display = esTrabajo ? '' : 'none';
+  tr.querySelector('.cg-detalle').style.display = estado === 'Otro' ? '' : 'none';
+}
+
+document.getElementById('btnGuardarCarga').addEventListener('click', async ()=>{
+  const fecha = document.getElementById('cargaFecha').value;
+  if(!fecha){ toast('Elegí una fecha', true); return; }
+  const filas = document.querySelectorAll('#cargaGridWrap tr[data-aux]');
+  if(!filas.length){ toast('No hay filas para guardar', true); return; }
+
+  const payloads = [];
+  for(const tr of filas){
+    const auxiliar_id = Number(tr.dataset.aux);
+    const estado = tr.querySelector('.cg-estado').value;
+    let payload = { auxiliar_id, fecha, hora_conexion:null, hora_desconexion:null, estado_especial:null, tarea:null, estado_horario:'normal' };
+    if(estado === 'trabajo'){
+      const hc = tr.querySelector('.cg-hc').value;
+      const hd = tr.querySelector('.cg-hd').value;
+      if(!hc || !hd){ toast(`Falta cargar horario de ${auxNombre(auxiliar_id)}`, true); return; }
+      payload.hora_conexion = hc; payload.hora_desconexion = hd;
+      payload.tarea = tr.querySelector('.cg-tarea').value || null;
+      payload.estado_horario = tr.dataset.punt || 'normal';
+    } else if(estado === 'Otro'){
+      payload.estado_especial = tr.querySelector('.cg-detalle').value || 'Otro';
+    } else {
+      payload.estado_especial = estado;
+    }
+    payloads.push(payload);
+  }
+
+  const { error } = await sb.from('entrena2_conexiones').upsert(payloads, { onConflict: 'auxiliar_id,fecha' });
+  if(error){ toast('Error guardando: ' + error.message, true); return; }
+  toast('Día guardado ✓ (' + payloads.length + ' auxiliares)');
+  checkAlertaSemana();
+  if(document.getElementById('cargaHistAuxiliar').value) loadHistorialCarga();
+});
+
+document.getElementById('btnCopiarAyer').addEventListener('click', async ()=>{
+  const fecha = document.getElementById('cargaFecha').value;
+  if(!fecha){ toast('Elegí una fecha primero', true); return; }
+  const { data, error } = await sb.from('entrena2_conexiones').select('*').lt('fecha', fecha).order('fecha', {ascending:false});
+  if(error){ toast('Error buscando datos previos', true); return; }
+  const ultimoPorAux = {};
+  (data||[]).forEach(r=>{ if(!ultimoPorAux[r.auxiliar_id]) ultimoPorAux[r.auxiliar_id] = r; });
+
+  document.querySelectorAll('#cargaGridWrap tr[data-aux]').forEach(tr=>{
+    const auxId = Number(tr.dataset.aux);
+    const prev = ultimoPorAux[auxId];
+    if(!prev) return;
+    const estadoSel = tr.querySelector('.cg-estado');
+    if(prev.estado_especial){
+      const estado = ESTADOS_ESPECIALES.includes(prev.estado_especial) ? prev.estado_especial : 'Otro';
+      estadoSel.value = estado;
+      if(estado === 'Otro') tr.querySelector('.cg-detalle').value = prev.estado_especial;
+    } else {
+      estadoSel.value = 'trabajo';
+      tr.querySelector('.cg-hc').value = prev.hora_conexion ? prev.hora_conexion.slice(0,5) : '';
+      tr.querySelector('.cg-hd').value = prev.hora_desconexion ? prev.hora_desconexion.slice(0,5) : '';
+      if(prev.tarea) tr.querySelector('.cg-tarea').value = prev.tarea;
+      cgSetPunt(auxId, 'normal'); // la puntualidad no se copia, se marca cada día si corresponde
+    }
+    cgToggleFila(auxId, estadoSel.value);
+  });
+  toast('Se trajeron los horarios del último día cargado de cada auxiliar');
+});
+
+/* ---- Alerta de días sin cargar (semana actual, lunes a sábado) ---- */
+function getMondayOfWeek(d){
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  return date;
+}
+async function checkAlertaSemana(){
+  const card = document.getElementById('cargaAlertaCard');
+  const box = document.getElementById('cargaAlerta');
+  const activos = AUXILIARES.filter(a=>a.activo);
+  if(!activos.length){ card.style.display = 'none'; return; }
+
+  const hoy = new Date();
+  const lunes = getMondayOfWeek(hoy);
+  const dias = [];
+  for(let i=0; i<6; i++){ // lunes a sábado (domingo se asume franco)
+    const d = new Date(lunes); d.setDate(lunes.getDate() + i);
+    if(d > hoy) break;
+    dias.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`);
+  }
+  if(!dias.length){ card.style.display = 'none'; return; }
+
+  const { data, error } = await sb.from('entrena2_conexiones').select('fecha, auxiliar_id').in('fecha', dias);
+  if(error){ card.style.display = 'none'; return; }
+  const cargadosPorDia = {};
+  (data||[]).forEach(r=>{
+    if(!cargadosPorDia[r.fecha]) cargadosPorDia[r.fecha] = new Set();
+    cargadosPorDia[r.fecha].add(r.auxiliar_id);
+  });
+
+  const faltantes = dias.filter(f => (cargadosPorDia[f] ? cargadosPorDia[f].size : 0) < activos.length);
+  card.style.display = 'block';
+  if(!faltantes.length){
+    box.innerHTML = `<span class="tag tag-ok">✓ Al día — ya cargaste todos los días de esta semana</span>`;
+  } else {
+    box.innerHTML = `<span class="tag tag-vac">⚠ Te faltan cargar ${faltantes.length} día(s) esta semana: ${faltantes.map(fmtFecha).join(', ')}</span>`;
+  }
+}
+
+document.getElementById('cargaHistAuxiliar').addEventListener('change', loadHistorialCarga);
+
+async function loadHistorialCarga(){
+  const auxiliar_id = Number(document.getElementById('cargaHistAuxiliar').value);
+  if(!auxiliar_id) return;
+  const { data, error } = await sb.from('entrena2_conexiones').select('*').eq('auxiliar_id', auxiliar_id).order('fecha', {ascending:false}).limit(15);
+  const box = document.getElementById('cargaHistTable');
+  if(error){ box.innerHTML = '<div class="empty">Error cargando historial.</div>'; return; }
+  if(!data || !data.length){ box.innerHTML = '<div class="empty">Sin registros para este auxiliar.</div>'; return; }
+  let rows = data.map(r=>{
+    let estadoCell, tareaCell = '<span class="muted">—</span>';
+    if(r.estado_especial){
+      const cls = r.estado_especial === 'Vacaciones' ? 'tag-vac' : (r.estado_especial === 'Licencia Medica' ? 'tag-lic' : 'tag-vac');
+      estadoCell = `<span class="tag ${cls}">${r.estado_especial}</span>`;
+    } else {
+      const cls = r.estado_horario === 'justificado' ? 'hora-justificado' : (r.estado_horario === 'injustificado' ? 'hora-injustificado' : '');
+      estadoCell = `<span class="${cls}">${r.hora_conexion?.slice(0,5) || '--'} – ${r.hora_desconexion?.slice(0,5) || '--'}</span>`;
+      if(r.tarea) tareaCell = `<span class="tag tag-tarea">${r.tarea}</span>`;
+    }
+    return `<tr><td>${fmtFecha(r.fecha)}</td><td>${estadoCell}</td><td>${tareaCell}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="eliminarConexion(${r.id}, ${auxiliar_id})">Eliminar</button></td></tr>`;
+  }).join('');
+  box.innerHTML = `<table><thead><tr><th>Fecha</th><th>Estado</th><th>Tarea</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function eliminarConexion(id, auxiliar_id){
+  if(!confirm('¿Eliminar este registro?')) return;
+  const { error } = await sb.from('entrena2_conexiones').delete().eq('id', id);
+  if(error){ toast('Error eliminando: ' + error.message, true); return; }
+  toast('Registro eliminado');
+  loadHistorialCarga();
+}
+
+/* =========================================================
+   TABS: MONITOREOS / INBOX (comparten lógica)
+   ========================================================= */
+function buildAnioOptions(selectId){
+  const sel = document.getElementById(selectId);
+  const base = 2026;
+  const current = new Date().getFullYear();
+  const max = Math.max(current + 1, base + 3);
+  sel.innerHTML = '';
+  for(let y = base; y <= max; y++){
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y;
+    if(y === current) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+buildAnioOptions('monAnio');
+buildAnioOptions('inbAnio');
+buildAnioOptions('repAnio');
+buildAnioOptions('prodAnio');
+
+/* =========================================================
+   TAB: PRODUCTIVIDAD Y DETALLE TMO
+   ========================================================= */
+document.getElementById('prodAuxiliar').addEventListener('change', ()=>{ renderProductividad(); renderTMO(); });
+document.getElementById('prodAnio').addEventListener('change', ()=>{ renderProductividad(); renderTMO(); });
+
+async function renderProductividad(){
+  const box = document.getElementById('prodTablaProductividad');
+  const auxiliar_id = Number(document.getElementById('prodAuxiliar').value);
+  const anio = Number(document.getElementById('prodAnio').value);
+  if(!auxiliar_id){ box.innerHTML = '<tbody><tr><td class="empty">Elegí un auxiliar.</td></tr></tbody>'; return; }
+  const { data, error } = await sb.from('entrena2_productividad').select('*').eq('auxiliar_id', auxiliar_id).eq('anio', anio);
+  if(error){ box.innerHTML = '<tbody><tr><td class="empty">Error cargando datos.</td></tr></tbody>'; return; }
+  const porMes = {};
+  (data||[]).forEach(r=> porMes[r.mes] = r);
+  const rows = MESES.map((m,i)=>{
+    const mes = i+1;
+    const r = porMes[mes] || {};
+    return `<tr data-mes="${mes}">
+      <td>${m}</td>
+      <td><input type="text" class="prod-tmo" value="${r.tmo||''}" placeholder="hh:mm:ss"></td>
+      <td><input type="text" class="prod-llamados" value="${r.llamados||''}"></td>
+      <td><input type="text" class="prod-gestiones" value="${r.gestiones_digitales||''}"></td>
+      <td><input type="text" class="prod-actdatos" value="${r.actividad_datos||''}" placeholder="% o valor"></td>
+    </tr>`;
+  }).join('');
+  box.innerHTML = `<thead><tr><th>Mes</th><th>TMO</th><th>Llamados</th><th>Gestiones Digitales</th><th>Actividad de datos</th></tr></thead><tbody>${rows}</tbody>`;
+}
+
+document.getElementById('btnGuardarProductividad').addEventListener('click', async ()=>{
+  const auxiliar_id = Number(document.getElementById('prodAuxiliar').value);
+  const anio = Number(document.getElementById('prodAnio').value);
+  if(!auxiliar_id){ toast('Elegí un auxiliar', true); return; }
+  const filas = document.querySelectorAll('#prodTablaProductividad tr[data-mes]');
+  if(!filas.length){ toast('Nada para guardar', true); return; }
+  const payloads = Array.from(filas).map(tr => ({
+    auxiliar_id, anio, mes: Number(tr.dataset.mes),
+    tmo: tr.querySelector('.prod-tmo').value || null,
+    llamados: tr.querySelector('.prod-llamados').value || null,
+    gestiones_digitales: tr.querySelector('.prod-gestiones').value || null,
+    actividad_datos: tr.querySelector('.prod-actdatos').value || null,
+  }));
+  const { error } = await sb.from('entrena2_productividad').upsert(payloads, { onConflict: 'auxiliar_id,anio,mes' });
+  if(error){ toast('Error guardando: ' + error.message, true); return; }
+  toast('Productividad guardada ✓');
+});
+
+async function renderTMO(){
+  const box = document.getElementById('prodTablaTMO');
+  const auxiliar_id = Number(document.getElementById('prodAuxiliar').value);
+  const anio = Number(document.getElementById('prodAnio').value);
+  if(!auxiliar_id){ box.innerHTML = '<tbody><tr><td class="empty">Elegí un auxiliar.</td></tr></tbody>'; return; }
+  const { data, error } = await sb.from('entrena2_detalle_tmo').select('*').eq('auxiliar_id', auxiliar_id).eq('anio', anio);
+  if(error){ box.innerHTML = '<tbody><tr><td class="empty">Error cargando datos.</td></tr></tbody>'; return; }
+  const porMes = {};
+  (data||[]).forEach(r=> porMes[r.mes] = r);
+  const rows = MESES.map((m,i)=>{
+    const mes = i+1;
+    const r = porMes[mes] || {};
+    return `<tr data-mes="${mes}">
+      <td>${m}</td>
+      <td><input type="text" class="tmo-att" value="${r.att||''}" placeholder="hh:mm:ss"></td>
+      <td><input type="text" class="tmo-acw" value="${r.acw||''}" placeholder="hh:mm:ss"></td>
+      <td><input type="text" class="tmo-hold" value="${r.hold||''}" placeholder="hh:mm:ss"></td>
+      <td><input type="text" class="tmo-tmo" value="${r.tmo||''}" placeholder="hh:mm:ss"></td>
+    </tr>`;
+  }).join('');
+  box.innerHTML = `<thead><tr><th>Mes</th><th>ATT</th><th>ACW</th><th>HOLD</th><th>TMO</th></tr></thead><tbody>${rows}</tbody>`;
+}
+
+document.getElementById('btnGuardarTMO').addEventListener('click', async ()=>{
+  const auxiliar_id = Number(document.getElementById('prodAuxiliar').value);
+  const anio = Number(document.getElementById('prodAnio').value);
+  if(!auxiliar_id){ toast('Elegí un auxiliar', true); return; }
+  const filas = document.querySelectorAll('#prodTablaTMO tr[data-mes]');
+  if(!filas.length){ toast('Nada para guardar', true); return; }
+  const payloads = Array.from(filas).map(tr => ({
+    auxiliar_id, anio, mes: Number(tr.dataset.mes),
+    att: tr.querySelector('.tmo-att').value || null,
+    acw: tr.querySelector('.tmo-acw').value || null,
+    hold: tr.querySelector('.tmo-hold').value || null,
+    tmo: tr.querySelector('.tmo-tmo').value || null,
+  }));
+  const { error } = await sb.from('entrena2_detalle_tmo').upsert(payloads, { onConflict: 'auxiliar_id,anio,mes' });
+  if(error){ toast('Error guardando: ' + error.message, true); return; }
+  toast('Detalle TMO guardado ✓');
+});
+
+function setupRegistroTab(cfg){
+  // cfg: {table, auxiliarSelectId, anioSelectId, tableBoxId, addBtnId, title}
+  async function load(){
+    const auxiliar_id = Number(document.getElementById(cfg.auxiliarSelectId).value);
+    const anio = Number(document.getElementById(cfg.anioSelectId).value);
+    const box = document.getElementById(cfg.tableBoxId);
+    if(!auxiliar_id){ box.innerHTML = '<div class="empty">Elegí un auxiliar.</div>'; return; }
+    const { data, error } = await sb.from(cfg.table).select('*')
+      .eq('auxiliar_id', auxiliar_id)
+      .gte('fecha', `${anio}-01-01`).lte('fecha', `${anio}-12-31`)
+      .order('fecha', {ascending:true});
+    if(error){ box.innerHTML = '<div class="empty">Error cargando datos.</div>'; return; }
+    if(!data || !data.length){ box.innerHTML = '<div class="empty">Sin registros en ' + anio + ' para este auxiliar.</div>'; return; }
+    const rows = data.map(r => `
+      <tr>
+        <td>${fmtFecha(r.fecha)}</td>
+        <td>${MESES[new Date(r.fecha+'T00:00:00').getMonth()]}</td>
+        <td>${r.observacion ? r.observacion.replace(/</g,'&lt;') : '<span class="muted">—</span>'}</td>
+        <td>${r.puntaje ? puntajeTag(r.puntaje) : '<span class="muted">—</span>'}</td>
+        <td>
+          <button class="btn btn-sm btn-outline" onclick='${cfg.editFn}(${JSON.stringify(r).replace(/'/g,"&apos;")})'>Editar</button>
+          <button class="btn btn-sm btn-danger" onclick="${cfg.deleteFn}(${r.id})">Eliminar</button>
+        </td>
+      </tr>`).join('');
+    box.innerHTML = `<table><thead><tr><th>Fecha</th><th>Mes</th><th>Observación</th><th>Puntaje</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  document.getElementById(cfg.auxiliarSelectId).addEventListener('change', load);
+  document.getElementById(cfg.anioSelectId).addEventListener('change', load);
+  return load;
+}
+
+function formModalRegistro(cfg, existing){
+  const auxiliar_id = Number(document.getElementById(cfg.auxiliarSelectId).value);
+  if(!auxiliar_id){ toast('Elegí un auxiliar primero', true); return; }
+  const isEdit = !!existing;
+  openModal(`
+    <h3>${isEdit ? 'Editar' : 'Nuevo'} ${cfg.title.toLowerCase()}</h3>
+    <div class="row"><div class="field" style="flex:1;">
+      <label>Fecha</label>
+      <input type="date" id="mrFecha" value="${existing ? existing.fecha : todayISO()}">
+    </div></div>
+    <div class="row"><div class="field" style="flex:1;">
+      <label>Observación</label>
+      <textarea id="mrObs">${existing && existing.observacion ? existing.observacion : ''}</textarea>
+    </div></div>
+    <div class="row"><div class="field" style="flex:1;">
+      <label>Puntaje</label>
+      <select id="mrPuntaje">
+        <option value="">— Sin calificar —</option>
+        <option value="Necesita Mejorar" ${existing && existing.puntaje === 'Necesita Mejorar' ? 'selected' : ''}>Necesita Mejorar</option>
+        <option value="Bueno" ${existing && existing.puntaje === 'Bueno' ? 'selected' : ''}>Bueno</option>
+        <option value="Muy Bueno" ${existing && existing.puntaje === 'Muy Bueno' ? 'selected' : ''}>Muy Bueno</option>
+        <option value="Excelente" ${existing && existing.puntaje === 'Excelente' ? 'selected' : ''}>Excelente</option>
+      </select>
+    </div></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" id="mrGuardar">Guardar</button>
+    </div>
+  `);
+  document.getElementById('mrGuardar').addEventListener('click', async ()=>{
+    const fecha = document.getElementById('mrFecha').value;
+    const observacion = document.getElementById('mrObs').value;
+    const puntajeRaw = document.getElementById('mrPuntaje').value;
+    const puntaje = puntajeRaw === '' ? null : puntajeRaw;
+    if(!fecha){ toast('Falta la fecha', true); return; }
+    let error;
+    if(isEdit){
+      ({ error } = await sb.from(cfg.table).update({ fecha, observacion, puntaje }).eq('id', existing.id));
+    } else {
+      ({ error } = await sb.from(cfg.table).insert({ auxiliar_id, fecha, observacion, puntaje }));
+    }
+    if(error){ toast('Error guardando: ' + error.message, true); return; }
+    toast('Guardado ✓');
+    closeModal();
+    cfg.reload();
+  });
+}
+
+async function deleteRegistro(table, id, reloadFn){
+  if(!confirm('¿Eliminar este registro?')) return;
+  const { error } = await sb.from(table).delete().eq('id', id);
+  if(error){ toast('Error eliminando: ' + error.message, true); return; }
+  toast('Eliminado');
+  reloadFn();
+}
+
+const monCfg = {
+  table:'entrena2_monitoreos', auxiliarSelectId:'monAuxiliar', anioSelectId:'monAnio',
+  tableBoxId:'monTable', title:'Monitoreo', editFn:'editMonitoreo', deleteFn:'deleteMonitoreo'
+};
+const inbCfg = {
+  table:'entrena2_inbox_devoluciones', auxiliarSelectId:'inbAuxiliar', anioSelectId:'inbAnio',
+  tableBoxId:'inbTable', title:'Registro', editFn:'editInbox', deleteFn:'deleteInbox'
+};
+const reloadMon = setupRegistroTab(monCfg); monCfg.reload = reloadMon;
+const reloadInb = setupRegistroTab(inbCfg); inbCfg.reload = reloadInb;
+
+document.getElementById('btnNuevoMonitoreo').addEventListener('click', ()=> formModalRegistro(monCfg));
+document.getElementById('btnNuevoInbox').addEventListener('click', ()=> formModalRegistro(inbCfg));
+function editMonitoreo(r){ formModalRegistro(monCfg, r); }
+function editInbox(r){ formModalRegistro(inbCfg, r); }
+function deleteMonitoreo(id){ deleteRegistro(monCfg.table, id, reloadMon); }
+function deleteInbox(id){ deleteRegistro(inbCfg.table, id, reloadInb); }
+
+/* =========================================================
+   TAB: AUXILIARES
+   ========================================================= */
+function renderAuxiliaresTable(){
+  const box = document.getElementById('auxTable');
+  if(!AUXILIARES.length){ box.innerHTML = '<div class="empty">No hay auxiliares cargados.</div>'; return; }
+  const rows = AUXILIARES.map(a => `
+    <tr>
+      <td style="width:40%;"><input class="inline-edit" value="${a.nombre}" onchange="renombrarAux(${a.id}, this.value)"></td>
+      <td>
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" ${a.activo ? 'checked' : ''} onchange="toggleActivoAux(${a.id}, this.checked)">
+          ${a.activo ? 'Activo' : 'Inactivo'}
+        </label>
+      </td>
+      <td><button class="btn btn-sm btn-danger" onclick="eliminarAux(${a.id}, '${a.nombre.replace(/'/g,"\\'")}')">Eliminar</button></td>
+    </tr>`).join('');
+  box.innerHTML = `<table><thead><tr><th>Nombre</th><th>Estado</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+async function renombrarAux(id, nombre){
+  if(!nombre.trim()) { toast('El nombre no puede estar vacío', true); loadAuxiliares(); return; }
+  const { error } = await sb.from('entrena2_auxiliares').update({ nombre: nombre.trim() }).eq('id', id);
+  if(error){ toast('Error: ' + error.message, true); return; }
+  toast('Nombre actualizado ✓');
+  loadAuxiliares();
+}
+async function toggleActivoAux(id, activo){
+  const { error } = await sb.from('entrena2_auxiliares').update({ activo }).eq('id', id);
+  if(error){ toast('Error: ' + error.message, true); return; }
+  toast(activo ? 'Auxiliar activado' : 'Auxiliar desactivado');
+  loadAuxiliares();
+}
+async function eliminarAux(id, nombre){
+  if(!confirm(`Esto borra a "${nombre}" y TODOS sus registros de conexión, monitoreos e inbox. ¿Seguro?`)) return;
+  const { error } = await sb.from('entrena2_auxiliares').delete().eq('id', id);
+  if(error){ toast('Error eliminando: ' + error.message, true); return; }
+  toast('Auxiliar eliminado');
+  loadAuxiliares();
+}
+document.getElementById('btnAgregarAux').addEventListener('click', async ()=>{
+  const input = document.getElementById('auxNuevoNombre');
+  const nombre = input.value.trim();
+  if(!nombre){ toast('Escribí un nombre', true); return; }
+  const orden = AUXILIARES.length ? Math.max(...AUXILIARES.map(a=>a.orden||0)) + 1 : 0;
+  const { error } = await sb.from('entrena2_auxiliares').insert({ nombre, activo:true, orden });
+  if(error){ toast('Error agregando: ' + error.message, true); return; }
+  input.value = '';
+  toast('Auxiliar agregado ✓');
+  loadAuxiliares();
+});
+
+/* =========================================================
+   TAB: REPORTE
+   ========================================================= */
+const mesSel = document.getElementById('repMes');
+MESES.forEach((m,i)=>{
+  const opt = document.createElement('option'); opt.value = i; opt.textContent = m;
+  if(i === new Date().getMonth()) opt.selected = true;
+  mesSel.appendChild(opt);
+});
+
+let repVerModo = 'activos';
+document.querySelectorAll('#repIncluirInactivos button').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('#repIncluirInactivos button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    repVerModo = b.dataset.v;
+    renderReporte();
+  });
+});
+document.getElementById('repAnio').addEventListener('change', renderReporte);
+document.getElementById('repMes').addEventListener('change', renderReporte);
+document.getElementById('repAuxiliar').addEventListener('change', renderReporte);
+
+function fillRepAuxiliarSelect(){
+  const sel = document.getElementById('repAuxiliar');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="todos">Todos</option>';
+  AUXILIARES.forEach(a=>{
+    const opt = document.createElement('option');
+    opt.value = a.id; opt.textContent = a.nombre + (a.activo ? '' : ' (inactivo)');
+    sel.appendChild(opt);
+  });
+  if(prev) sel.value = prev;
+}
+
+async function renderReporte(){
+  const anio = Number(document.getElementById('repAnio').value);
+  const mesIdx = Number(document.getElementById('repMes').value);
+  const repAuxVal = document.getElementById('repAuxiliar').value;
+  document.getElementById('repSubtitle').textContent = `${MESES[mesIdx]} ${anio}`;
+
+  let auxiliares = AUXILIARES.filter(a => repVerModo === 'todos' ? true : a.activo);
+  if(repAuxVal !== 'todos'){
+    auxiliares = auxiliares.filter(a => String(a.id) === String(repAuxVal));
+    if(!auxiliares.length){
+      // por si el elegido está inactivo y el toggle está en "Solo activos"
+      const a = AUXILIARES.find(x => String(x.id) === String(repAuxVal));
+      if(a) auxiliares = [a];
+    }
+  }
+  const nDias = daysInMonth(anio, mesIdx);
+  const desde = `${anio}-${pad(mesIdx+1)}-01`;
+  const hasta = `${anio}-${pad(mesIdx+1)}-${pad(nDias)}`;
+
+  const { data: conex } = await sb.from('entrena2_conexiones').select('*').gte('fecha', desde).lte('fecha', hasta);
+  const byAuxDia = {};
+  (conex||[]).forEach(r=>{ byAuxDia[r.auxiliar_id + '_' + r.fecha] = r; });
+
+  // grilla conexión/desconexión
+  let head = `<tr><th class="name-col">Auxiliar</th>`;
+  for(let d=1; d<=nDias; d++){
+    const wd = new Date(anio, mesIdx, d).toLocaleDateString('es-AR', {weekday:'short'});
+    head += `<th>${d}<br><span style="font-weight:400; text-transform:none;">${wd}</span></th>`;
+  }
+  head += `</tr>`;
+
+  let bodyRows = auxiliares.map(a=>{
+    let cells = `<td class="name-col">${a.nombre}</td>`;
+    for(let d=1; d<=nDias; d++){
+      const fecha = `${anio}-${pad(mesIdx+1)}-${pad(d)}`;
+      const r = byAuxDia[a.id + '_' + fecha];
+      const isSunday = new Date(anio, mesIdx, d).getDay() === 0;
+      if(!r){
+        cells += `<td class="${isSunday ? 'muted' : ''}">${isSunday ? '–' : ''}</td>`;
+      } else if(r.estado_especial){
+        const abbr = r.estado_especial.slice(0,3);
+        cells += `<td title="${r.estado_especial}">${abbr}</td>`;
+      } else {
+        const horaCls = r.estado_horario === 'justificado' ? 'hora-justificado' : (r.estado_horario === 'injustificado' ? 'hora-injustificado' : '');
+        const tareaAbbr = r.tarea ? TAREA_ABBR[r.tarea] || r.tarea : '';
+        const tituloTarea = r.tarea ? ` · ${r.tarea}` : '';
+        const horaTxt = `${(r.hora_conexion||'').slice(0,5)}–${(r.hora_desconexion||'').slice(0,5)}`;
+        cells += `<td title="${horaTxt}${tituloTarea}"><span class="${horaCls}">${horaTxt}</span>${tareaAbbr ? `<span class="cell-tarea">${tareaAbbr}</span>` : ''}</td>`;
+      }
+    }
+    return `<tr>${cells}</tr>`;
+  }).join('');
+
+  document.getElementById('repGridConexion').innerHTML = `<thead>${head}</thead><tbody>${bodyRows || '<tr><td class="empty">Sin auxiliares para mostrar.</td></tr>'}</tbody>`;
+
+  // resumen monitoreos / inbox del mes
+  const { data: monData } = await sb.from('entrena2_monitoreos').select('*').gte('fecha', desde).lte('fecha', hasta);
+  const { data: inbData } = await sb.from('entrena2_inbox_devoluciones').select('*').gte('fecha', desde).lte('fecha', hasta);
+
+  const resumenRows = auxiliares.map(a=>{
+    const mons = (monData||[]).filter(r=>r.auxiliar_id===a.id);
+    const inbs = (inbData||[]).filter(r=>r.auxiliar_id===a.id);
+    const monFechas = mons.map(r=>fmtFecha(r.fecha)).join(', ') || '—';
+    const inbFechas = inbs.map(r=>fmtFecha(r.fecha)).join(', ') || '—';
+    return `<tr><td>${a.nombre}</td><td>${mons.length}</td><td>${monFechas}</td><td>${inbs.length}</td><td>${inbFechas}</td></tr>`;
+  }).join('');
+  document.getElementById('repGridResumen').innerHTML = `
+    <thead><tr><th>Auxiliar</th><th>Monitoreos</th><th>Fechas</th><th>Inbox/Devol.</th><th>Fechas</th></tr></thead>
+    <tbody>${resumenRows || '<tr><td class="empty">Sin datos.</td></tr>'}</tbody>`;
+
+  window._reporteCache = { anio, mesIdx, auxiliares, byAuxDia, nDias, monData: monData||[], inbData: inbData||[] };
+}
+
+document.getElementById('btnExportPDF').addEventListener('click', ()=> window.print());
+
+document.getElementById('btnExportExcel').addEventListener('click', ()=>{
+  const c = window._reporteCache;
+  if(!c){ toast('Esperá a que cargue el reporte', true); return; }
+  const wb = XLSX.utils.book_new();
+
+  // Hoja Conexión y Desconexión (formato ancho, similar al original + tarea y puntualidad)
+  const header1 = ['']; const header2 = [''];
+  c.auxiliares.forEach(a=>{ header1.push(a.nombre,'','',''); header2.push('conexión','desconexión','tarea','puntualidad'); });
+  const rows = [header1, header2];
+  for(let d=1; d<=c.nDias; d++){
+    const fecha = `${c.anio}-${pad(c.mesIdx+1)}-${pad(d)}`;
+    const row = [new Date(c.anio, c.mesIdx, d)];
+    c.auxiliares.forEach(a=>{
+      const r = c.byAuxDia[a.id + '_' + fecha];
+      if(!r){ row.push('','','',''); }
+      else if(r.estado_especial){ row.push(r.estado_especial, '', '', ''); }
+      else {
+        const punt = r.estado_horario === 'justificado' ? 'Justificado ✓' : (r.estado_horario === 'injustificado' ? 'Sin justificar ⚠' : 'En horario');
+        row.push(r.hora_conexion||'', r.hora_desconexion||'', r.tarea||'', punt);
+      }
+    });
+    rows.push(row);
+  }
+  const ws1 = XLSX.utils.aoa_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws1, 'Conexion y Desconexion');
+
+  // Hoja Monitoreos (formato lista)
+  const monRows = [['Auxiliar','Fecha','Observación','Puntaje']];
+  c.monData.forEach(r=> monRows.push([auxNombre(r.auxiliar_id), fmtFecha(r.fecha), r.observacion||'', r.puntaje ?? '']));
+  const ws2 = XLSX.utils.aoa_to_sheet(monRows);
+  XLSX.utils.book_append_sheet(wb, ws2, 'Monitoreos');
+
+  // Hoja Inbox y Devoluciones (formato lista)
+  const inbRows = [['Auxiliar','Fecha','Observación','Puntaje']];
+  c.inbData.forEach(r=> inbRows.push([auxNombre(r.auxiliar_id), fmtFecha(r.fecha), r.observacion||'', r.puntaje ?? '']));
+  const ws3 = XLSX.utils.aoa_to_sheet(inbRows);
+  XLSX.utils.book_append_sheet(wb, ws3, 'Inbox y Devoluciones');
+
+  const sufijoAux = c.auxiliares.length === 1 ? `_${c.auxiliares[0].nombre.replace(/\s+/g,'')}` : '';
+  XLSX.writeFile(wb, `Reporte_Entrena2_${MESES[c.mesIdx]}_${c.anio}${sufijoAux}.xlsx`);
+  toast('Excel generado ✓');
+});
+
+/* =========================================================
+   INIT
+   ========================================================= */
+async function init(){
+  const status = document.getElementById('connStatus');
+  try{
+    const { error } = await sb.from('entrena2_auxiliares').select('id').limit(1);
+    if(error) throw error;
+    status.textContent = 'conectado'; status.className = 'ok';
+  }catch(e){
+    status.textContent = 'sin conexión'; status.className = 'bad';
+    toast('No se pudo conectar a Supabase. Revisá SUPABASE_URL / ANON_KEY.', true);
+  }
+  await loadAuxiliares();
+  renderReporte();
+}
+init();
+</script>
+</body>
+</html>
