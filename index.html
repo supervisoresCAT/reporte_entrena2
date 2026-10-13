@@ -288,6 +288,11 @@
           <div class="label">Inbox / Devoluciones · mes actual</div>
           <div class="value" id="kpiInbox">—</div>
         </div>
+        <div class="kpi">
+          <div class="label">Días sin cargar · mes actual</div>
+          <div class="value" id="kpiSinCargar">—</div>
+          <div class="foot" id="kpiSinCargarFoot"></div>
+        </div>
       </div>
 
       <div class="card">
@@ -312,6 +317,9 @@
           </div>
           <div class="field" style="min-width:auto;">
             <button class="btn btn-outline" id="btnCopiarAyer">↺ Traer horarios del último día cargado</button>
+          </div>
+          <div class="field" style="min-width:auto;">
+            <button class="btn btn-outline" id="btnFeriadoTodos" title="Pone Feriado a todo el equipo en esta fecha (después tocá Guardar día)">🎌 Marcar feriado a todos</button>
           </div>
         </div>
       </div>
@@ -542,7 +550,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_8oUx8EJHl67PKy2gIJYvWA_wjX9AhDe";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-const ESTADOS_ESPECIALES = ["Vacaciones","Licencia Medica","Franco","Ausente","Otro"];
+const ESTADOS_ESPECIALES = ["Vacaciones","Licencia Medica","Franco","Feriado","Ausente","Otro"];
 const TAREAS = ["Atencion Telefonica","Comunidad Digital","Planes JS","Linea 7075"];
 const TAREA_ABBR = {"Atencion Telefonica":"AT","Comunidad Digital":"CD","Planes JS":"PJS","Linea 7075":"L75"};
 // Nombre "lindo" (con tildes) para mostrar en reportes; en la base se guarda sin tildes
@@ -701,6 +709,8 @@ function calcStats(recs){
   });
   return s;
 }
+// % de días trabajados con marca de fuera de horario (justificado + sin justificar)
+function pctFuera(s){ return s.trabajados ? Math.round((s.justificados + s.sinJustificar) * 100 / s.trabajados) : 0; }
 function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 function daysInMonth(anio, mesIdx){ return new Date(anio, mesIdx+1, 0).getDate(); }
 function enumerarDias(desde, hasta){
@@ -808,6 +818,8 @@ async function renderResumen(){
     document.getElementById('kpiAtrasadosFoot').textContent = '';
     document.getElementById('kpiRanking').innerHTML = '';
     document.getElementById('kpiInbox').textContent = '—';
+    document.getElementById('kpiSinCargar').textContent = '—';
+    document.getElementById('kpiSinCargarFoot').textContent = '';
     return;
   }
   emptyEl.style.display = 'none';
@@ -820,11 +832,28 @@ async function renderResumen(){
   const desdeMes = `${anio}-${pad(mes)}-01`;
   const hastaMes = `${anio}-${pad(mes)}-${pad(daysInMonth(anio, mes-1))}`;
 
-  const [monRes, prodRes, inbRes] = await Promise.all([
+  const [monRes, prodRes, inbRes, conRes] = await Promise.all([
     sb.from('entrena2_monitoreos').select('auxiliar_id, fecha').in('auxiliar_id', ids).order('fecha', {ascending:false}),
     sb.from('entrena2_productividad').select('auxiliar_id, actividad_datos').in('auxiliar_id', ids).eq('anio', anio).eq('mes', mes),
     sb.from('entrena2_inbox_devoluciones').select('auxiliar_id').in('auxiliar_id', ids).gte('fecha', desdeMes).lte('fecha', hastaMes),
+    sb.from('entrena2_conexiones').select('auxiliar_id, fecha').in('auxiliar_id', ids).gte('fecha', desdeMes).lte('fecha', hastaMes),
   ]);
+
+  // Días hábiles (lunes a sábado) del mes, hasta ayer, que no tienen ningún registro cargado
+  const cargados = new Set((conRes.data||[]).map(r => r.auxiliar_id + '_' + r.fecha));
+  const diasHabiles = [];
+  for(let d=1; d<now.getDate(); d++){
+    const f = new Date(anio, mes-1, d);
+    if(f.getDay() !== 0) diasHabiles.push(`${anio}-${pad(mes)}-${pad(d)}`);
+  }
+  const sinCargarPorAux = {};
+  let totalSinCargar = 0, auxConFaltantes = 0;
+  activos.forEach(a=>{
+    const faltan = diasHabiles.filter(f => !cargados.has(a.id + '_' + f));
+    sinCargarPorAux[a.id] = faltan;
+    totalSinCargar += faltan.length;
+    if(faltan.length) auxConFaltantes++;
+  });
 
   const ultimoMonPorAux = {};
   (monRes.data||[]).forEach(r=>{ if(!(r.auxiliar_id in ultimoMonPorAux)) ultimoMonPorAux[r.auxiliar_id] = r.fecha; });
@@ -853,6 +882,10 @@ async function renderResumen(){
   footEl.textContent = atrasados ? 'Requieren seguimiento' : 'Todo al día';
   footEl.className = 'foot ' + (atrasados ? 'alert' : 'good');
   document.getElementById('kpiInbox').textContent = `${inboxCount} / ${activos.length}`;
+  document.getElementById('kpiSinCargar').textContent = totalSinCargar;
+  const scFoot = document.getElementById('kpiSinCargarFoot');
+  scFoot.textContent = totalSinCargar ? `${auxConFaltantes} auxiliar(es) con días pendientes · hasta ayer` : 'Todo cargado hasta ayer';
+  scFoot.className = 'foot ' + (totalSinCargar ? 'alert' : 'good');
 
   const medals = ['🥇','🥈','🥉'];
   document.getElementById('kpiRanking').innerHTML = ranking.length
@@ -861,7 +894,7 @@ async function renderResumen(){
 
   grid.innerHTML = activos.map(a=>{
     const d = diasDesde(ultimoMonPorAux[a.id]);
-    let cls = 'ok', label = d==null ? 'Sin monitoreo' : `${d} días`;
+    let cls = 'ok', label = d==null ? 'Sin monitoreo' : `Monitoreo hace ${d} días`;
     if(d==null || d>21) cls = 'bad'; else if(d>14) cls = 'warn';
     return `
     <div class="kpi resumen-card" style="cursor:pointer; flex-direction:column; align-items:flex-start;" data-open="${a.id}">
@@ -870,6 +903,9 @@ async function renderResumen(){
         <div style="font-weight:600; font-size:13px; color:var(--ink);">${a.nombre}</div>
       </div>
       <span class="badge ${cls}">${label}</span>
+      ${sinCargarPorAux[a.id] && sinCargarPorAux[a.id].length
+        ? `<span class="badge warn" style="margin-top:6px;" title="${sinCargarPorAux[a.id].map(fmtFecha).join(', ')}">⚠ ${sinCargarPorAux[a.id].length} día(s) sin cargar</span>`
+        : ''}
     </div>`;
   }).join('');
 
@@ -903,7 +939,7 @@ async function renderCargaGrid(fecha){
   const activos = AUXILIARES.filter(a=>a.activo);
   if(!activos.length){ wrap.innerHTML = '<div class="empty">No hay auxiliares activos. Agregá alguno en la pestaña Auxiliares.</div>'; return; }
 
-  const { data: existentes, error } = await sb.from('entrena2_conexiones').select('*').eq('fecha', fecha);
+  const { data: existentes, error } = await sb.from('entrena2_conexiones').select('*').eq('fecha', fecha).in('auxiliar_id', activos.map(a=>a.id));
   if(error){ wrap.innerHTML = '<div class="empty">Error cargando datos del día.</div>'; return; }
   const porAux = {};
   (existentes||[]).forEach(r=> porAux[r.auxiliar_id] = r);
@@ -1068,10 +1104,20 @@ document.getElementById('btnGuardarCarga').addEventListener('click', async (ev)=
 document.getElementById('btnCopiarAyer').addEventListener('click', async ()=>{
   const fecha = document.getElementById('cargaFecha').value;
   if(!fecha){ toast('Elegí una fecha primero', true); return; }
-  const { data, error } = await sb.from('entrena2_conexiones').select('*').lt('fecha', fecha).order('fecha', {ascending:false});
+  // Solo los auxiliares de la grilla y los últimos 60 días (antes traía TODO el historial de todos los grupos)
+  const ids = [...document.querySelectorAll('#cargaGridWrap tr[data-aux]')].map(tr=>Number(tr.dataset.aux));
+  const hace60 = new Date(fecha + 'T00:00:00'); hace60.setDate(hace60.getDate() - 60);
+  const desde60 = `${hace60.getFullYear()}-${pad(hace60.getMonth()+1)}-${pad(hace60.getDate())}`;
+  const { data, error } = await sb.from('entrena2_conexiones').select('*')
+    .in('auxiliar_id', ids.length ? ids : [-1]).gte('fecha', desde60).lt('fecha', fecha).order('fecha', {ascending:false});
   if(error){ toast('Error buscando datos previos', true); return; }
+  // Franco y Feriado son de un día puntual: se saltean y se toma el último día "real" (trabajo, vacaciones, licencia…)
   const ultimoPorAux = {};
-  (data||[]).forEach(r=>{ if(!ultimoPorAux[r.auxiliar_id]) ultimoPorAux[r.auxiliar_id] = r; });
+  (data||[]).forEach(r=>{
+    if(ultimoPorAux[r.auxiliar_id]) return;
+    if(r.estado_especial === 'Franco' || r.estado_especial === 'Feriado') return;
+    ultimoPorAux[r.auxiliar_id] = r;
+  });
 
   document.querySelectorAll('#cargaGridWrap tr[data-aux]').forEach(tr=>{
     const auxId = Number(tr.dataset.aux);
@@ -1099,6 +1145,17 @@ document.getElementById('btnCopiarAyer').addEventListener('click', async ()=>{
     cgToggleFila(auxId, estadoSel.value);
   });
   toast('Se trajeron los horarios del último día cargado de cada auxiliar');
+});
+
+document.getElementById('btnFeriadoTodos').addEventListener('click', ()=>{
+  const filas = document.querySelectorAll('#cargaGridWrap tr[data-aux]');
+  if(!filas.length){ toast('No hay auxiliares en la grilla', true); return; }
+  filas.forEach(tr=>{
+    const auxId = Number(tr.dataset.aux);
+    tr.querySelector('.cg-estado').value = 'Feriado';
+    cgToggleFila(auxId, 'Feriado');
+  });
+  toast('Feriado marcado para todos. Revisá si alguien trabajó y tocá "Guardar día".');
 });
 
 /* ---- Alerta de días sin cargar (semana actual, lunes a sábado) ---- */
@@ -1482,7 +1539,18 @@ async function toggleActivoAux(id, activo){
   loadAuxiliares();
 }
 async function eliminarAux(id, nombre){
-  if(!confirm(`Esto borra a "${nombre}" y TODOS sus registros de conexión, monitoreos e inbox. ¿Seguro?`)) return;
+  // Cuántos registros se perderían: si tiene historial, se recomienda desactivar en vez de borrar
+  const contar = t => sb.from(t).select('id', { count:'exact', head:true }).eq('auxiliar_id', id);
+  const [c1, c2, c3] = await Promise.all([contar('entrena2_conexiones'), contar('entrena2_monitoreos'), contar('entrena2_inbox_devoluciones')]);
+  const total = (c1.count||0) + (c2.count||0) + (c3.count||0);
+  if(total > 0){
+    const escrito = prompt(
+      `"${nombre}" tiene historial: ${c1.count||0} días de conexión, ${c2.count||0} monitoreos y ${c3.count||0} registros de inbox.\n\n` +
+      `Si se fue del grupo, lo recomendable es DESACTIVARLO (destildar "Activo"): deja de aparecer pero conserva su historial para los reportes.\n\n` +
+      `Borrar elimina todo eso para siempre. Para borrar igual, escribí el nombre exacto:`);
+    if(escrito === null) return;
+    if(escrito.trim() !== nombre.trim()){ toast('El nombre no coincide. No se borró nada.', true); return; }
+  } else if(!confirm(`¿Eliminar a "${nombre}"? No tiene registros cargados.`)) return;
   const { error } = await sb.from('entrena2_auxiliares').delete().eq('id', id);
   if(error){ toast('Error eliminando: ' + error.message, true); return; }
   toast('Auxiliar eliminado');
@@ -1632,10 +1700,19 @@ async function renderReporte(){
   const hasta = `${anio}-${pad(mesHasta+1)}-${pad(daysInMonth(anio, mesHasta))}`;
   const dias = enumerarDias(desde, hasta);
 
-  const [conRes, monRes, inbRes] = await Promise.all([
+  // Período anterior de igual largo (ej. Ago–Sep → Jun–Jul), para comparar
+  const largo = mesHasta - mesDesde + 1;
+  const iniPrev = new Date(anio, mesDesde - largo, 1);
+  const finPrev = new Date(anio, mesDesde, 0);
+  const isoD = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const prevDesde = isoD(iniPrev), prevHasta = isoD(finPrev);
+  const prevLabel = largo === 1 ? `${MESES[iniPrev.getMonth()]} ${iniPrev.getFullYear()}` : `${MESES[iniPrev.getMonth()]} – ${MESES[finPrev.getMonth()]} ${finPrev.getFullYear()}`;
+
+  const [conRes, monRes, inbRes, prevRes] = await Promise.all([
     sb.from('entrena2_conexiones').select('*').in('auxiliar_id', ids).gte('fecha', desde).lte('fecha', hasta),
     sb.from('entrena2_monitoreos').select('*').in('auxiliar_id', ids).gte('fecha', desde).lte('fecha', hasta).order('fecha'),
     sb.from('entrena2_inbox_devoluciones').select('*').in('auxiliar_id', ids).gte('fecha', desde).lte('fecha', hasta).order('fecha'),
+    sb.from('entrena2_conexiones').select('auxiliar_id, fecha, hora_conexion, hora_desconexion, hora_conexion_2, hora_desconexion_2, estado_especial, estado_horario').in('auxiliar_id', ids).gte('fecha', prevDesde).lte('fecha', prevHasta),
   ]);
   if(seq !== _repRenderSeq) return;
   const err = conRes.error || monRes.error || inbRes.error;
@@ -1651,10 +1728,11 @@ async function renderReporte(){
   // ---- Resumen del período (siempre visible; con un mes por fila si es un período) ----
   const n = (v, cls) => v ? `<span class="${cls||''}">${v}</span>` : '<span class="muted" style="opacity:.45;">0</span>';
   const filaStats = (label, mesLabel, s, extraCls) => `<tr class="${extraCls||''}"><td class="name-col">${label}</td>${esPeriodo ? `<td>${mesLabel}</td>` : ''}
-    <td>${n(s.trabajados)}</td><td>${s.minutos ? fmtHoras(s.minutos) : '—'}</td>
+    <td>${n(s.trabajados)}</td><td>${s.minutos ? fmtHoras(s.minutos) : '—'}</td><td>${s.trabajados ? fmtHoras(Math.round(s.minutos / s.trabajados)) : '—'}</td>
+    <td>${s.trabajados ? pctFuera(s) + '%' : '—'}</td>
     <td>${n(s.justificados,'hora-justificado')}</td><td>${n(s.sinJustificar,'hora-injustificado')}</td>
     <td>${n(s.vacaciones)}</td><td>${n(s.licencias)}</td><td>${n(s.francos)}</td><td>${n(s.ausentes)}</td><td>${n(s.feriados + s.otros)}</td></tr>`;
-  const headM = `<tr><th class="name-col">Auxiliar</th>${esPeriodo ? '<th>Mes</th>' : ''}<th>Días trab.</th><th>Horas</th><th>Justif.</th><th>Sin justif.</th><th>Vacaciones</th><th>Licencias</th><th>Francos</th><th>Ausencias</th><th>Feriados / otros</th></tr>`;
+  const headM = `<tr><th class="name-col">Auxiliar</th>${esPeriodo ? '<th>Mes</th>' : ''}<th>Días trab.</th><th>Horas</th><th>Prom./día</th><th>% fuera h.</th><th>Justif.</th><th>Sin justif.</th><th>Vacaciones</th><th>Licencias</th><th>Francos</th><th>Ausencias</th><th>Feriados / otros</th></tr>`;
   let bodyM = '';
   auxiliares.forEach(a=>{
     if(esPeriodo){
@@ -1681,7 +1759,7 @@ async function renderReporte(){
     <thead><tr><th>Auxiliar</th><th style="text-align:center;">Monitoreos</th><th>Fechas · puntaje</th><th style="text-align:center;">Inbox/Devol.</th><th>Fechas · puntaje</th></tr></thead>
     <tbody>${resumenRows || '<tr><td class="empty">Sin datos.</td></tr>'}</tbody>`;
 
-  window._reporteCache = { anio, mesDesde, mesHasta, esPeriodo, auxiliares, byAuxDia, dias, monData, inbData };
+  window._reporteCache = { anio, mesDesde, mesHasta, esPeriodo, auxiliares, byAuxDia, dias, monData, inbData, prevConex: prevRes.data || [], prevLabel };
 }
 
 /* ---- Traer Productividad y Detalle TMO para incluir en los exports ---- */
@@ -1787,6 +1865,9 @@ function repPdfCss(){
   .kpi span{display:block; font-size:5.8pt; text-transform:uppercase; letter-spacing:.04em; color:#5b5470; white-space:nowrap;}
   .kpi.good b{color:#00a08e;} .kpi.bad b{color:#e8264b;} .kpi.dim b{color:#cdc8de;}
   .kpi.main{background:#f3f1fc; border-color:#e0dbf6;} .kpi.main b{color:#4b3fc0;}
+  .dl{display:block; font-size:5.6pt; font-weight:700; white-space:nowrap; margin-top:0.2mm; color:#8a84a3; font-style:normal;}
+  .dl.bad{color:#e8264b;} .dl.good{color:#00a08e;}
+  td .dl{display:inline; margin-left:1mm;}
 
   /* Calendarios */
   .cals{display:grid; grid-template-columns:1fr 1fr; gap:4mm 7mm;}
@@ -1969,6 +2050,15 @@ function repProductividadHtml(c, datosAux){
   </div>`;
 }
 
+// Variación contra el período anterior. menosEsMejor: para % fuera de horario, bajar es bueno.
+function repDelta(actual, anterior, fmt, menosEsMejor){
+  if(anterior == null) return '';
+  const diff = actual - anterior;
+  if(Math.abs(diff) < 0.5) return `<i class="dl">= ant.</i>`;
+  const cls = menosEsMejor == null ? '' : ((diff < 0) === menosEsMejor ? 'good' : 'bad');
+  return `<i class="dl ${cls}">${diff > 0 ? '▲' : '▼'} ${fmt(Math.abs(diff))}</i>`;
+}
+
 function buildReportePdfHtml(c, opts){
   opts = opts || {};
   const hoy = opts.hoyISO || todayISO();
@@ -1980,6 +2070,9 @@ function buildReportePdfHtml(c, opts){
   (opts.prodDatos || []).forEach(d => prodPorAux[d.auxiliar.id] = d);
 
   const statsDe = (auxId) => calcStats(registros.filter(r => r.auxiliar_id === auxId));
+  const prevConex = c.prevConex || [];
+  const prevDe = (auxId) => { const p = calcStats(prevConex.filter(r => r.auxiliar_id === auxId)); return p.trabajados ? p : null; };
+  const promDia = s => s.trabajados ? Math.round(s.minutos / s.trabajados) : 0;
   const monDe = (auxId) => c.monData.filter(r => r.auxiliar_id === auxId);
   const inbDe = (auxId) => c.inbData.filter(r => r.auxiliar_id === auxId);
 
@@ -1993,7 +2086,7 @@ function buildReportePdfHtml(c, opts){
     <div class="meta">
       ${opts.supervisor ? `Supervisor/a: <b>${esc(opts.supervisor)}</b><br>` : ''}
       ${unSolo ? '' : `Auxiliares: <b>${c.auxiliares.length}</b><br>`}
-      Generado el ${esc(fechaGenerado)}
+      ${c.prevLabel && prevConex.length ? `Comparado con: <b>${esc(c.prevLabel)}</b><br>` : ''}Generado el ${esc(fechaGenerado)}
     </div>
   </div>`;
 
@@ -2008,7 +2101,9 @@ function buildReportePdfHtml(c, opts){
       return `<tr>
         <td class="n">${repAvatar(a.nombre)}${esc(a.nombre)}${a.activo ? '' : ' <span class="zero">(inactivo)</span>'}</td>
         <td>${repNum(s.trabajados)}</td><td>${s.minutos ? fmtHoras(s.minutos) : '<span class="zero">—</span>'}</td>
-        <td class="sep">${repNum(s.justificados,'just')}</td><td>${repNum(s.sinJustificar,'injust')}</td>
+        <td>${s.trabajados ? fmtHoras(promDia(s)) : '<span class="zero">—</span>'}</td>
+        <td class="sep">${s.trabajados ? pctFuera(s) + '%' : '<span class="zero">—</span>'}${(()=>{ const p = prevDe(a.id); return p && s.trabajados ? repDelta(pctFuera(s), pctFuera(p), v=>v+' pts', true) : ''; })()}</td>
+        <td>${repNum(s.justificados,'just')}</td><td>${repNum(s.sinJustificar,'injust')}</td>
         <td class="sep">${repNum(s.vacaciones)}</td><td>${repNum(s.licencias)}</td><td>${repNum(s.francos)}</td><td>${repNum(s.ausentes)}</td><td>${repNum(s.feriados + s.otros)}</td>
         <td class="sep">${repNum(nMon)}</td><td>${repNum(nInb)}</td></tr>`;
     }).join('');
@@ -2016,12 +2111,13 @@ function buildReportePdfHtml(c, opts){
       <div class="sec-title">Resumen del equipo <small>${periodoTxt}</small></div>
       <table class="sum">
         <thead>
-          <tr><th class="grp n"></th><th class="grp" colspan="2">Asistencia</th><th class="grp sep" colspan="2">Fuera de horario</th><th class="grp sep" colspan="5">Ausencias y novedades</th><th class="grp sep" colspan="2">Seguimiento</th></tr>
-          <tr><th class="n">Auxiliar</th><th>Días trab.</th><th>Horas</th><th class="sep">Justif.</th><th>Sin justif.</th><th class="sep">Vacac.</th><th>Licencias</th><th>Francos</th><th>Ausencias</th><th>Feriados / otros</th><th class="sep">Monitoreos</th><th>Inbox / devol.</th></tr>
+          <tr><th class="grp n"></th><th class="grp" colspan="3">Asistencia</th><th class="grp sep" colspan="3">Fuera de horario</th><th class="grp sep" colspan="5">Ausencias y novedades</th><th class="grp sep" colspan="2">Seguimiento</th></tr>
+          <tr><th class="n">Auxiliar</th><th>Días trab.</th><th>Horas</th><th>Prom./día</th><th class="sep">% días</th><th>Justif.</th><th>Sin justif.</th><th class="sep">Vacac.</th><th>Licencias</th><th>Francos</th><th>Ausencias</th><th>Feriados / otros</th><th class="sep">Monitoreos</th><th>Inbox / devol.</th></tr>
         </thead>
         <tbody>${filas}
-          <tr class="total"><td class="n">Total equipo</td><td>${tot.trabajados}</td><td>${fmtHoras(tot.minutos)}</td>
-          <td class="sep">${repNum(tot.justificados,'just')}</td><td>${repNum(tot.sinJustificar,'injust')}</td>
+          <tr class="total"><td class="n">Total equipo</td><td>${tot.trabajados}</td><td>${fmtHoras(tot.minutos)}</td><td>${tot.trabajados ? fmtHoras(promDia(tot)) : '—'}</td>
+          <td class="sep">${tot.trabajados ? pctFuera(tot) + '%' : '—'}${(()=>{ const p = calcStats(prevConex); return p.trabajados && tot.trabajados ? repDelta(pctFuera(tot), pctFuera(p), v=>v+' pts', true) : ''; })()}</td>
+          <td>${repNum(tot.justificados,'just')}</td><td>${repNum(tot.sinJustificar,'injust')}</td>
           <td class="sep">${tot.vacaciones}</td><td>${tot.licencias}</td><td>${tot.francos}</td><td>${tot.ausentes}</td><td>${tot.feriados + tot.otros}</td>
           <td class="sep">${totMon}</td><td>${totInb}</td></tr>
         </tbody>
@@ -2033,17 +2129,19 @@ function buildReportePdfHtml(c, opts){
   // ---- Una sección por auxiliar ----
   const secciones = c.auxiliares.map((a, idx)=>{
     const s = statsDe(a.id), mons = monDe(a.id), inbs = inbDe(a.id);
-    const kpi = (val, label, cls) => `<div class="kpi ${cls||''}"><b>${val}</b><span>${label}</span></div>`;
+    const p = prevDe(a.id);
+    const kpi = (val, label, cls, delta) => `<div class="kpi ${cls||''}"><b>${val}</b><span>${label}</span>${delta||''}</div>`;
     const kpis = [
       kpi(s.trabajados, 'Días trab.', 'main'),
       kpi(fmtHoras(s.minutos), 'Horas', 'main'),
+      // Se comparan solo promedios y porcentajes: los totales engañan si el período anterior está cargado a medias
+      kpi(s.trabajados ? fmtHoras(promDia(s)) : '—', 'Prom. por día', '', p && s.trabajados ? repDelta(promDia(s), promDia(p), fmtHoras) : ''),
+      kpi(s.trabajados ? pctFuera(s) + '%' : '—', '% fuera horario', pctFuera(s) >= 20 ? 'bad' : '', p && s.trabajados ? repDelta(pctFuera(s), pctFuera(p), v=>v+' pts', true) : ''),
       kpi(s.justificados, 'Fuera h. just.', s.justificados ? 'good' : 'dim'),
       kpi(s.sinJustificar, 'Fuera h. sin just.', s.sinJustificar ? 'bad' : 'dim'),
       kpi(s.vacaciones, 'Vacaciones', s.vacaciones ? '' : 'dim'),
       kpi(s.licencias, 'Licencias', s.licencias ? '' : 'dim'),
       kpi(s.ausentes, 'Ausencias', s.ausentes ? 'bad' : 'dim'),
-      kpi(mons.length, 'Monitoreos', mons.length ? '' : 'dim'),
-      kpi(inbs.length, 'Inbox/devol.', inbs.length ? '' : 'dim'),
     ].join('');
     let cals = '';
     for(let m=c.mesDesde; m<=c.mesHasta; m++) cals += repCalendarioMes(c.anio, m, a.id, c.byAuxDia, hoy);
