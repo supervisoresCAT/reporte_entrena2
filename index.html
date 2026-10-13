@@ -216,6 +216,26 @@
   }
   #supervisorBadge button:hover{background:rgba(255,255,255,.4);}
 
+  /* Reporte en pantalla: colores por estado, fines de semana y leyenda */
+  table.report th.mes-grp{background:var(--teal-soft); color:var(--teal-dark); font-size:11.5px; letter-spacing:.6px; text-align:left; border-left:2px solid var(--teal);}
+  table.report th.we, table.report td.we{background:#faf9fd;}
+  table.report th.mes-ini, table.report td.mes-ini{border-left:2px solid var(--teal);}
+  table.report td{font-variant-numeric:tabular-nums; font-size:12px;}
+  table.report td.st{font-weight:700; font-size:11.5px;}
+  .st-vac{background:var(--amber-soft) !important; color:#8a5a11;}
+  .st-lic{background:var(--red-soft) !important; color:#9c2f2f;}
+  .st-fra{background:#f1f0f5 !important; color:#6b6582;}
+  .st-aus{background:var(--pink-soft) !important; color:#a3145a;}
+  .st-fer{background:var(--teal-soft) !important; color:var(--teal-dark);}
+  .st-otro{background:var(--turq-soft) !important; color:#00695c;}
+  table.report td.cel-injust{background:#fff5f7;}
+  table.report td.sin-carga{background:#fffbf2; color:#d99a1c; font-weight:700;}
+  .legend{display:flex; flex-wrap:wrap; gap:6px 16px; margin-top:12px; font-size:12px; color:var(--ink-soft); align-items:center;}
+  .legend i{display:inline-block; width:13px; height:13px; border-radius:3px; border:1px solid var(--line); margin-right:5px; vertical-align:-2px; background:#fff;}
+  .legend i.sin-carga{background:#fffbf2; border:1px dashed var(--amber);}
+  table.report tr.fila-total td{background:var(--bg); font-weight:700;}
+  table.report tr.fila-total-equipo td{background:var(--teal-soft); color:var(--teal-dark);}
+
   @media print{
     header.topbar, nav.tabs, .no-print{display:none !important;}
     body{background:#fff;}
@@ -450,6 +470,7 @@
         </div>
         <div class="row" style="align-items:center;">
           <button class="btn btn-outline" id="btnExportExcel">⬇ Exportar Excel</button>
+          <button class="btn btn-outline" id="btnVistaPrevia">👁 Vista previa</button>
           <button class="btn btn-outline" id="btnExportPDF">⬇ Exportar PDF</button>
           <label style="display:flex; align-items:center; gap:6px; font-size:13px; font-weight:500; margin-left:6px;">
             <input type="checkbox" id="inclProdReporte"> Incluir Productividad y Detalle TMO
@@ -463,11 +484,23 @@
         <div class="grid-scroll">
           <table class="report" id="repGridConexion"></table>
         </div>
+        <div class="legend">
+          <span><i style="border-left:3px solid var(--turq-text);"></i>Fuera de horario justificado</span>
+          <span><i style="border-left:3px solid var(--red-vivid); background:#fff5f7;"></i>Fuera de horario sin justificar</span>
+          <span><i class="st-vac"></i>Vacaciones</span>
+          <span><i class="st-lic"></i>Licencia médica</span>
+          <span><i class="st-fra"></i>Franco</span>
+          <span><i class="st-aus"></i>Ausente</span>
+          <span><i class="st-fer"></i>Feriado</span>
+          <span><i class="st-otro"></i>Otro</span>
+          <span><i class="sin-carga"></i>Día sin cargar</span>
+          <span>AT Atención Telefónica · CD Comunidad Digital · PJS Planes JS · L75 Línea 7075</span>
+        </div>
       </div>
 
-      <div class="card" id="repMensualCard" style="display:none;">
-        <h2 style="margin-bottom:2px;">Resumen por mes</h2>
-        <div class="sub">Totales del período: días trabajados, justificados, vacaciones, licencias, francos y ausencias.</div>
+      <div class="card" id="repMensualCard">
+        <h2 style="margin-bottom:2px;">Resumen del período</h2>
+        <div class="sub" id="repMensualSub"></div>
         <div class="grid-scroll">
           <table class="report" id="repGridMensual"></table>
         </div>
@@ -512,6 +545,8 @@ const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto"
 const ESTADOS_ESPECIALES = ["Vacaciones","Licencia Medica","Franco","Ausente","Otro"];
 const TAREAS = ["Atencion Telefonica","Comunidad Digital","Planes JS","Linea 7075"];
 const TAREA_ABBR = {"Atencion Telefonica":"AT","Comunidad Digital":"CD","Planes JS":"PJS","Linea 7075":"L75"};
+// Nombre "lindo" (con tildes) para mostrar en reportes; en la base se guarda sin tildes
+const TAREA_LABEL = {"Atencion Telefonica":"Atención Telefónica","Comunidad Digital":"Comunidad Digital","Planes JS":"Planes JS","Linea 7075":"Línea 7075"};
 
 // ↓↓↓ Lista de supervisores — revisá que los 12 nombres estén bien escritos antes de subir el archivo.
 // Tienen que coincidir EXACTO con lo que se guardó en la columna "supervisor" de Supabase.
@@ -614,6 +649,57 @@ function turnosHtml(r, cls){
     return `${t1}<br><span${c}>${(r.hora_conexion_2||'').slice(0,5)}–${(r.hora_desconexion_2||'').slice(0,5)}</span>`;
   }
   return t1;
+}
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function hhmm(t){ return (t || '').slice(0,5); }
+// Minutos entre conexión y desconexión (si cruza medianoche, suma 24 h)
+function minutosTurno(desde, hasta){
+  if(!desde || !hasta) return 0;
+  const [h1,m1] = desde.split(':').map(Number), [h2,m2] = hasta.split(':').map(Number);
+  let d = (h2*60 + m2) - (h1*60 + m1);
+  if(d < 0) d += 1440;
+  return d;
+}
+function minutosDia(r){ return minutosTurno(r.hora_conexion, r.hora_desconexion) + minutosTurno(r.hora_conexion_2, r.hora_desconexion_2); }
+function fmtHoras(min){
+  if(!min) return '0 h';
+  const h = Math.floor(min/60), m = min % 60;
+  return m ? `${h} h ${pad(m)}` : `${h} h`;
+}
+// Cómo se muestra cada estado especial (lo que no está en la lista cae en "Otro" con su texto)
+const ESTADO_INFO = {
+  'Vacaciones':      { cls:'vac', label:'Vacaciones',      abbr:'Vac' },
+  'Licencia Medica': { cls:'lic', label:'Licencia médica', abbr:'Lic' },
+  'Franco':          { cls:'fra', label:'Franco',          abbr:'Fra' },
+  'Ausente':         { cls:'aus', label:'Ausente',         abbr:'Aus' },
+  'Feriado':         { cls:'fer', label:'Feriado',         abbr:'Fer' },
+};
+function estadoInfo(e){ return ESTADO_INFO[e] || { cls:'otro', label:e, abbr:String(e).slice(0,3) }; }
+// Totales de una lista de registros de conexión
+function calcStats(recs){
+  const s = { trabajados:0, minutos:0, enHorario:0, justificados:0, sinJustificar:0, vacaciones:0, licencias:0, francos:0, ausentes:0, feriados:0, otros:0, tareas:{} };
+  recs.forEach(r=>{
+    if(r.estado_especial){
+      switch(r.estado_especial){
+        case 'Vacaciones': s.vacaciones++; break;
+        case 'Licencia Medica': s.licencias++; break;
+        case 'Franco': s.francos++; break;
+        case 'Ausente': s.ausentes++; break;
+        case 'Feriado': s.feriados++; break;
+        default: s.otros++;
+      }
+    } else {
+      s.trabajados++;
+      s.minutos += minutosDia(r);
+      if(r.estado_horario === 'justificado') s.justificados++;
+      else if(r.estado_horario === 'injustificado') s.sinJustificar++;
+      else s.enHorario++;
+      if(r.tarea) s.tareas[r.tarea] = (s.tareas[r.tarea] || 0) + 1;
+    }
+  });
+  return s;
 }
 function todayISO(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 function daysInMonth(anio, mesIdx){ return new Date(anio, mesIdx+1, 0).getDate(); }
@@ -1039,7 +1125,8 @@ async function checkAlertaSemana(){
   }
   if(!dias.length){ card.style.display = 'none'; return; }
 
-  const { data, error } = await sb.from('entrena2_conexiones').select('fecha, auxiliar_id').in('fecha', dias);
+  // Solo los auxiliares activos de este supervisor (antes contaba los de todos los grupos y podía dar "al día" por error)
+  const { data, error } = await sb.from('entrena2_conexiones').select('fecha, auxiliar_id').in('fecha', dias).in('auxiliar_id', activos.map(a=>a.id));
   if(error){ card.style.display = 'none'; return; }
   const cargadosPorDia = {};
   (data||[]).forEach(r=>{
@@ -1459,27 +1546,13 @@ function fillRepAuxiliarSelect(){
 
 function statsAuxMes(records, auxId, anio, mes){
   const prefijo = `${anio}-${pad(mes+1)}`;
-  const recs = records.filter(r => r.auxiliar_id === auxId && r.fecha.startsWith(prefijo));
-  let trabajados=0, justificados=0, sinJustificar=0, vacaciones=0, licencias=0, francos=0, ausentes=0, otros=0;
-  recs.forEach(r=>{
-    if(r.estado_especial){
-      if(r.estado_especial === 'Vacaciones') vacaciones++;
-      else if(r.estado_especial === 'Licencia Medica') licencias++;
-      else if(r.estado_especial === 'Franco') francos++;
-      else if(r.estado_especial === 'Ausente') ausentes++;
-      else otros++;
-    } else {
-      trabajados++;
-      if(r.estado_horario === 'justificado') justificados++;
-      else if(r.estado_horario === 'injustificado') sinJustificar++;
-    }
-  });
-  return { trabajados, justificados, sinJustificar, vacaciones, licencias, francos, ausentes, otros };
+  return calcStats(records.filter(r => r.auxiliar_id === auxId && r.fecha.startsWith(prefijo)));
 }
 
 // Construye el detalle día a día (encabezado agrupado por mes + filas por auxiliar).
 // Se usa tanto para un mes único como para un período de varios meses.
 function buildDetalleDiarioTabla(auxiliares, dias, byAuxDia){
+  const hoy = todayISO();
   const gruposMes = [];
   dias.forEach(fecha=>{
     const d = new Date(fecha + 'T00:00:00');
@@ -1489,32 +1562,39 @@ function buildDetalleDiarioTabla(auxiliares, dias, byAuxDia){
     else gruposMes.push({label:mesLabel, count:1});
   });
   const mesesRow = gruposMes.length > 1
-    ? `<tr><th class="name-col"></th>${gruposMes.map(g=>`<th colspan="${g.count}" style="background:var(--teal-soft); color:var(--teal-dark);">${g.label}</th>`).join('')}</tr>`
+    ? `<tr><th class="name-col"></th>${gruposMes.map(g=>`<th colspan="${g.count}" class="mes-grp">${g.label}</th>`).join('')}</tr>`
     : '';
   let diasRow = `<tr><th class="name-col">Auxiliar</th>`;
   dias.forEach(fecha=>{
     const d = new Date(fecha + 'T00:00:00');
-    const wd = d.toLocaleDateString('es-AR', {weekday:'short'});
-    diasRow += `<th>${d.getDate()}<br><span style="font-weight:400; text-transform:none;">${wd}</span></th>`;
+    const wd = d.toLocaleDateString('es-AR', {weekday:'short'}).replace('.', '');
+    const we = d.getDay() === 0 || d.getDay() === 6;
+    const mesIni = d.getDate() === 1 && fecha !== dias[0];
+    diasRow += `<th class="${we ? 'we' : ''} ${mesIni ? 'mes-ini' : ''}">${d.getDate()}<br><span style="font-weight:400; text-transform:none;">${wd}</span></th>`;
   });
   diasRow += `</tr>`;
 
   const bodyRows = auxiliares.map(a=>{
-    let cells = `<td class="name-col">${a.nombre}</td>`;
+    let cells = `<td class="name-col">${esc(a.nombre)}</td>`;
     dias.forEach(fecha=>{
       const r = byAuxDia[a.id + '_' + fecha];
-      const isSunday = new Date(fecha + 'T00:00:00').getDay() === 0;
+      const d = new Date(fecha + 'T00:00:00');
+      const cls = [];
+      if(d.getDay() === 0 || d.getDay() === 6) cls.push('we');
+      if(d.getDate() === 1 && fecha !== dias[0]) cls.push('mes-ini');
       if(!r){
-        cells += `<td class="${isSunday ? 'muted' : ''}">${isSunday ? '–' : ''}</td>`;
+        if(d.getDay() === 0 || fecha > hoy){ cells += `<td class="${cls.join(' ')} muted">${d.getDay() === 0 && fecha <= hoy ? '–' : ''}</td>`; }
+        else { cls.push('sin-carga'); cells += `<td class="${cls.join(' ')}" title="Sin cargar">·</td>`; }
       } else if(r.estado_especial){
-        const abbr = r.estado_especial.slice(0,3);
-        cells += `<td title="${r.estado_especial}">${abbr}</td>`;
+        const info = estadoInfo(r.estado_especial);
+        cls.push('st', 'st-' + info.cls);
+        cells += `<td class="${cls.join(' ')}" title="${esc(r.estado_especial)}">${esc(info.abbr)}</td>`;
       } else {
         const horaCls = r.estado_horario === 'justificado' ? 'hora-justificado' : (r.estado_horario === 'injustificado' ? 'hora-injustificado' : '');
+        if(r.estado_horario === 'injustificado') cls.push('cel-injust');
         const tareaAbbr = r.tarea ? TAREA_ABBR[r.tarea] || r.tarea : '';
         const tituloTarea = r.tarea ? ` · ${r.tarea}` : '';
-        const horaTxt = turnosTxt(r);
-        cells += `<td title="${horaTxt}${tituloTarea}">${turnosHtml(r, horaCls)}${tareaAbbr ? `<span class="cell-tarea">${tareaAbbr}</span>` : ''}</td>`;
+        cells += `<td class="${cls.join(' ')}" title="${esc(turnosTxt(r) + tituloTarea)}">${turnosHtml(r, horaCls)}${tareaAbbr ? `<span class="cell-tarea">${esc(tareaAbbr)}</span>` : ''}</td>`;
       }
     });
     return `<tr>${cells}</tr>`;
@@ -1523,17 +1603,18 @@ function buildDetalleDiarioTabla(auxiliares, dias, byAuxDia){
   return { head: mesesRow + diasRow, bodyRows };
 }
 
+let _repRenderSeq = 0; // evita que una respuesta vieja pise a una nueva si se cambian filtros rápido
 async function renderReporte(){
+  const seq = ++_repRenderSeq;
   const anio = Number(document.getElementById('repAnio').value);
   let mesDesde = Number(document.getElementById('repMesDesde').value);
   let mesHasta = Number(document.getElementById('repMesHasta').value);
   if(mesDesde > mesHasta){ const t = mesDesde; mesDesde = mesHasta; mesHasta = t; }
   const esPeriodo = mesDesde !== mesHasta;
   const repAuxVal = document.getElementById('repAuxiliar').value;
+  const periodoTxt = esPeriodo ? `${MESES[mesDesde]} – ${MESES[mesHasta]} ${anio}` : `${MESES[mesDesde]} ${anio}`;
 
-  document.getElementById('repSubtitle').textContent = esPeriodo
-    ? `${MESES[mesDesde]} – ${MESES[mesHasta]} ${anio}`
-    : `${MESES[mesDesde]} ${anio}`;
+  document.getElementById('repSubtitle').textContent = periodoTxt;
   document.getElementById('repGridTitulo').textContent = 'Conexión y desconexión';
 
   let auxiliares = AUXILIARES.filter(a => repVerModo === 'todos' ? true : a.activo);
@@ -1544,55 +1625,63 @@ async function renderReporte(){
       if(a) auxiliares = [a];
     }
   }
+  // Solo se piden los datos de los auxiliares de este supervisor (antes venían los de todos los grupos)
+  const ids = auxiliares.length ? auxiliares.map(a=>a.id) : [-1];
 
   const desde = `${anio}-${pad(mesDesde+1)}-01`;
   const hasta = `${anio}-${pad(mesHasta+1)}-${pad(daysInMonth(anio, mesHasta))}`;
   const dias = enumerarDias(desde, hasta);
 
-  const { data: conex } = await sb.from('entrena2_conexiones').select('*').gte('fecha', desde).lte('fecha', hasta);
+  const [conRes, monRes, inbRes] = await Promise.all([
+    sb.from('entrena2_conexiones').select('*').in('auxiliar_id', ids).gte('fecha', desde).lte('fecha', hasta),
+    sb.from('entrena2_monitoreos').select('*').in('auxiliar_id', ids).gte('fecha', desde).lte('fecha', hasta).order('fecha'),
+    sb.from('entrena2_inbox_devoluciones').select('*').in('auxiliar_id', ids).gte('fecha', desde).lte('fecha', hasta).order('fecha'),
+  ]);
+  if(seq !== _repRenderSeq) return;
+  const err = conRes.error || monRes.error || inbRes.error;
+  if(err){ toast('Error cargando el reporte: ' + err.message, true); return; }
+  const conex = conRes.data || [], monData = monRes.data || [], inbData = inbRes.data || [];
   const byAuxDia = {};
-  (conex||[]).forEach(r=>{ byAuxDia[r.auxiliar_id + '_' + r.fecha] = r; });
+  conex.forEach(r=>{ byAuxDia[r.auxiliar_id + '_' + r.fecha] = r; });
 
-  // ---- Detalle día a día: se muestra siempre, sea un mes único o un período ----
+  // ---- Detalle día a día ----
   const { head, bodyRows } = buildDetalleDiarioTabla(auxiliares, dias, byAuxDia);
   document.getElementById('repGridConexion').innerHTML = `<thead>${head}</thead><tbody>${bodyRows || '<tr><td class="empty">Sin auxiliares para mostrar.</td></tr>'}</tbody>`;
 
-  // ---- Resumen por mes: card aparte, solo cuando el período abarca más de un mes ----
-  const mensualCard = document.getElementById('repMensualCard');
-  if(esPeriodo){
-    mensualCard.style.display = '';
-    const headM = `<tr><th class="name-col">Auxiliar</th><th>Mes</th><th>Días trab.</th><th>Justif.</th><th>Sin justif.</th><th>Vacaciones</th><th>Licencias</th><th>Francos</th><th>Ausencias</th></tr>`;
-    let bodyM = '';
-    auxiliares.forEach(a=>{
-      for(let m=mesDesde; m<=mesHasta; m++){
-        const s = statsAuxMes(conex||[], a.id, anio, m);
-        bodyM += `<tr><td class="name-col">${a.nombre}</td><td>${MESES[m]}</td><td>${s.trabajados}</td>
-          <td><span class="hora-justificado">${s.justificados}</span></td>
-          <td><span class="hora-injustificado">${s.sinJustificar}</span></td>
-          <td>${s.vacaciones}</td><td>${s.licencias}</td><td>${s.francos}</td><td>${s.ausentes}</td></tr>`;
-      }
-    });
-    document.getElementById('repGridMensual').innerHTML = `<thead>${headM}</thead><tbody>${bodyM || '<tr><td class="empty">Sin auxiliares para mostrar.</td></tr>'}</tbody>`;
-  } else {
-    mensualCard.style.display = 'none';
-  }
+  // ---- Resumen del período (siempre visible; con un mes por fila si es un período) ----
+  const n = (v, cls) => v ? `<span class="${cls||''}">${v}</span>` : '<span class="muted" style="opacity:.45;">0</span>';
+  const filaStats = (label, mesLabel, s, extraCls) => `<tr class="${extraCls||''}"><td class="name-col">${label}</td>${esPeriodo ? `<td>${mesLabel}</td>` : ''}
+    <td>${n(s.trabajados)}</td><td>${s.minutos ? fmtHoras(s.minutos) : '—'}</td>
+    <td>${n(s.justificados,'hora-justificado')}</td><td>${n(s.sinJustificar,'hora-injustificado')}</td>
+    <td>${n(s.vacaciones)}</td><td>${n(s.licencias)}</td><td>${n(s.francos)}</td><td>${n(s.ausentes)}</td><td>${n(s.feriados + s.otros)}</td></tr>`;
+  const headM = `<tr><th class="name-col">Auxiliar</th>${esPeriodo ? '<th>Mes</th>' : ''}<th>Días trab.</th><th>Horas</th><th>Justif.</th><th>Sin justif.</th><th>Vacaciones</th><th>Licencias</th><th>Francos</th><th>Ausencias</th><th>Feriados / otros</th></tr>`;
+  let bodyM = '';
+  auxiliares.forEach(a=>{
+    if(esPeriodo){
+      for(let m=mesDesde; m<=mesHasta; m++) bodyM += filaStats(esc(a.nombre), MESES[m], statsAuxMes(conex, a.id, anio, m));
+      bodyM += filaStats(`Total ${esc(a.nombre)}`, 'Período', calcStats(conex.filter(r=>r.auxiliar_id===a.id)), 'fila-total');
+    } else {
+      bodyM += filaStats(esc(a.nombre), '', calcStats(conex.filter(r=>r.auxiliar_id===a.id)));
+    }
+  });
+  if(auxiliares.length > 1) bodyM += filaStats('Total equipo', 'Período', calcStats(conex), 'fila-total fila-total-equipo');
+  document.getElementById('repGridMensual').innerHTML = `<thead>${headM}</thead><tbody>${bodyM || '<tr><td class="empty">Sin auxiliares para mostrar.</td></tr>'}</tbody>`;
+  document.getElementById('repMensualSub').textContent = periodoTxt + (esPeriodo ? ' · desglosado por mes, con el total de cada auxiliar' : '');
 
-  // resumen monitoreos / inbox del período
-  const { data: monData } = await sb.from('entrena2_monitoreos').select('*').gte('fecha', desde).lte('fecha', hasta);
-  const { data: inbData } = await sb.from('entrena2_inbox_devoluciones').select('*').gte('fecha', desde).lte('fecha', hasta);
-
+  // ---- Monitoreos e inbox del período, con fecha y puntaje ----
+  const chips = regs => regs.length
+    ? regs.map(r=>`<span class="tag ${r.puntaje ? (PUNTAJE_CLASS[r.puntaje]||'tag-ok') : 'tag-ok'}" title="${esc(r.observacion||'')}" style="margin:1px 3px 1px 0;">${fmtFecha(r.fecha).slice(0,5)}${r.puntaje ? ' · ' + esc(r.puntaje) : ''}</span>`).join('')
+    : '<span class="muted">—</span>';
   const resumenRows = auxiliares.map(a=>{
-    const mons = (monData||[]).filter(r=>r.auxiliar_id===a.id);
-    const inbs = (inbData||[]).filter(r=>r.auxiliar_id===a.id);
-    const monFechas = mons.map(r=>fmtFecha(r.fecha)).join(', ') || '—';
-    const inbFechas = inbs.map(r=>fmtFecha(r.fecha)).join(', ') || '—';
-    return `<tr><td>${a.nombre}</td><td>${mons.length}</td><td>${monFechas}</td><td>${inbs.length}</td><td>${inbFechas}</td></tr>`;
+    const mons = monData.filter(r=>r.auxiliar_id===a.id);
+    const inbs = inbData.filter(r=>r.auxiliar_id===a.id);
+    return `<tr><td style="white-space:nowrap; font-weight:600;">${esc(a.nombre)}</td><td style="text-align:center;">${mons.length}</td><td>${chips(mons)}</td><td style="text-align:center;">${inbs.length}</td><td>${chips(inbs)}</td></tr>`;
   }).join('');
   document.getElementById('repGridResumen').innerHTML = `
-    <thead><tr><th>Auxiliar</th><th>Monitoreos</th><th>Fechas</th><th>Inbox/Devol.</th><th>Fechas</th></tr></thead>
+    <thead><tr><th>Auxiliar</th><th style="text-align:center;">Monitoreos</th><th>Fechas · puntaje</th><th style="text-align:center;">Inbox/Devol.</th><th>Fechas · puntaje</th></tr></thead>
     <tbody>${resumenRows || '<tr><td class="empty">Sin datos.</td></tr>'}</tbody>`;
 
-  window._reporteCache = { anio, mesDesde, mesHasta, esPeriodo, auxiliares, byAuxDia, dias, monData: monData||[], inbData: inbData||[] };
+  window._reporteCache = { anio, mesDesde, mesHasta, esPeriodo, auxiliares, byAuxDia, dias, monData, inbData };
 }
 
 /* ---- Traer Productividad y Detalle TMO para incluir en los exports ---- */
@@ -1608,153 +1697,424 @@ async function traerProdYTMO(auxiliares, anio){
   return out;
 }
 
-/* ---- Exportar PDF: ventana propia con diseño de reporte (no depende del layout de la app) ---- */
-document.getElementById('btnExportPDF').addEventListener('click', async ()=>{
+/* =========================================================
+   REPORTE PDF — diseño de impresión (A4 apaisado)
+   Estructura:
+     · Portada con período, supervisor y fecha de generación
+     · Resumen del equipo (solo si hay más de un auxiliar)
+     · Una página por auxiliar: KPIs + calendario de cada mes +
+       monitoreos e inbox con detalle + productividad (opcional)
+   Todo lo de este bloque es "puro": recibe datos y devuelve HTML,
+   no toca Supabase ni el DOM de la app.
+   ========================================================= */
+const REP_PUNTAJE_CLS = { 'Necesita Mejorar':'p-nm', 'Bueno':'p-b', 'Muy Bueno':'p-mb', 'Excelente':'p-e' };
+
+function repPdfCss(){
+  return `
+  @page{ size:A4 landscape; margin:9mm 10mm 12mm;
+    @bottom-left{ content:"Entrena2 · Reporte de Auxiliares"; font:7pt Inter,Arial,sans-serif; color:#8a84a3; }
+    @bottom-right{ content:"Página " counter(page) " de " counter(pages); font:7pt Inter,Arial,sans-serif; color:#8a84a3; }
+  }
+  *{box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
+  html,body{margin:0;}
+  body{font-family:Inter,'Segoe UI',Arial,sans-serif; color:#161326; font-size:8.5pt; line-height:1.35; background:#fff;}
+  h1,h2,h3{font-family:'Space Grotesk',Inter,sans-serif; margin:0; font-weight:700;}
+  .num{font-variant-numeric:tabular-nums;}
+
+  /* Vista previa en pantalla: hoja centrada + barra con botón de imprimir */
+  @media screen{
+    body{background:#e9e7f2; padding:16px 0 40px;}
+    .doc{width:277mm; margin:0 auto; background:#fff; padding:9mm 10mm; box-shadow:0 4px 30px rgba(22,19,38,.15); border-radius:4px;}
+    .aux{margin-top:14mm; padding-top:10mm; border-top:1px dashed #d9d3f6;}
+    .aux.first{margin-top:0; padding-top:0; border-top:none;}
+    .pbar{position:sticky; top:0; z-index:5; display:flex; justify-content:center; gap:10px; margin:-16px 0 16px; padding:10px; background:rgba(233,231,242,.92); backdrop-filter:blur(4px);}
+    .pbar button{border:none; border-radius:8px; padding:9px 18px; font:600 13px Inter,sans-serif; cursor:pointer; background:#6c5ce7; color:#fff;}
+    .pbar button.sec{background:#fff; color:#4b3fc0; border:1px solid #6c5ce7;}
+  }
+  @media print{ .pbar{display:none !important;} }
+
+  /* Portada */
+  .cover{background:linear-gradient(120deg,#4b3fc0 0%,#6c5ce7 55%,#ff3d81 130%); color:#fff; border-radius:3mm; padding:5mm 7mm; display:flex; justify-content:space-between; align-items:flex-end; gap:8mm; margin-bottom:6mm;}
+  .cover .eyebrow{font-size:7pt; letter-spacing:.14em; text-transform:uppercase; opacity:.8; font-weight:600;}
+  .cover h1{font-size:19pt; line-height:1.1; margin-top:1mm;}
+  .cover .period{font-size:10.5pt; margin-top:1mm; opacity:.95;}
+  .cover .meta{text-align:right; font-size:7.5pt; line-height:1.7; opacity:.92; white-space:nowrap;}
+  .cover .meta b{font-weight:700;}
+
+  .sec-title{font-family:'Space Grotesk',Inter,sans-serif; font-size:11pt; font-weight:700; margin:0 0 3mm; display:flex; align-items:center; gap:2mm;}
+  .sec-title::before{content:""; width:1.2mm; height:4.2mm; background:#6c5ce7; border-radius:1mm;}
+  .sec-title small{font-family:Inter,sans-serif; font-weight:500; font-size:7.5pt; color:#5b5470; margin-left:1mm;}
+
+  /* Tabla resumen del equipo */
+  table.sum{width:100%; border-collapse:separate; border-spacing:0; border:0.3mm solid #e7e3f7; border-radius:2mm; overflow:hidden; margin-bottom:5mm;}
+  table.sum th{background:#f3f1fc; color:#4b3fc0; font-size:6.6pt; text-transform:uppercase; letter-spacing:.04em; font-weight:700; padding:1.8mm 1.4mm; text-align:center; border-bottom:0.3mm solid #e7e3f7; line-height:1.2;}
+  table.sum th.grp{background:#ece9fb; font-size:6.2pt; padding:1mm; border-bottom:0.3mm solid #e0dbf6;}
+  table.sum td{padding:1.5mm 1.4mm; text-align:center; border-bottom:0.2mm solid #f0eef8; font-variant-numeric:tabular-nums;}
+  table.sum tr:last-child td{border-bottom:none;}
+  table.sum .n{text-align:left; white-space:nowrap; font-weight:600;}
+  table.sum tr.total td{background:#f3f1fc; font-weight:700;}
+  table.sum .sep{border-left:0.3mm solid #e7e3f7;}
+  .zero{color:#cdc8de;}
+  .just{color:#00a08e; font-weight:700;}
+  .injust{color:#e8264b; font-weight:700;}
+  .av{display:inline-flex; width:5mm; height:5mm; border-radius:50%; color:#fff; font-size:5.8pt; font-weight:700; align-items:center; justify-content:center; margin-right:1.8mm; vertical-align:middle; font-family:'Space Grotesk',Inter,sans-serif;}
+
+  /* Leyenda */
+  .legend{display:flex; flex-wrap:wrap; gap:1.5mm 4.5mm; font-size:6.8pt; color:#5b5470; align-items:center;}
+  .legend .lg{display:inline-block; width:3.2mm; height:3.2mm; border-radius:0.8mm; margin-right:1.2mm; vertical-align:-0.6mm; border:0.25mm solid #e7e3f7; background:#fff;}
+  .legend .lg.just{border-left:1mm solid #00b39e;}
+  .legend .lg.injust{border-left:1mm solid #ff2d55; background:#fff5f7;}
+  .legend .lg.vac{background:#fff2da; border-color:#ffe2a8;}
+  .legend .lg.lic{background:#ffe1e8; border-color:#ffc2cf;}
+  .legend .lg.fra{background:#f1f0f5; border-color:#e4e2ec;}
+  .legend .lg.aus{background:#ffe3ee; border-color:#ffc4da;}
+  .legend .lg.fer{background:#ece9fb; border-color:#d9d3f6;}
+  .legend .lg.otro{background:#e3f7f4; border-color:#bfece5;}
+  .legend .lg.miss{background:#fffbf2; border:0.3mm dashed #ffb020;}
+  .legend .chip{margin-right:1mm;}
+
+  /* Página de auxiliar */
+  .aux{break-before:page;}
+  .aux.first{break-before:auto;}
+  .aux-head{display:flex; align-items:center; gap:3.5mm; padding-bottom:3mm; border-bottom:0.4mm solid #ece9fb; margin-bottom:4mm; break-inside:avoid;}
+  .aux-head .av{width:11mm; height:11mm; font-size:11pt; margin:0;}
+  .aux-head h2{font-size:15pt; line-height:1.1;}
+  .aux-head .sub{color:#5b5470; font-size:7.6pt; margin-top:0.5mm; white-space:nowrap;}
+  .aux-head .sub + .sub{margin-top:0;}
+  .kpis{display:flex; gap:1.4mm; margin-left:auto; flex-wrap:nowrap; justify-content:flex-end; flex-shrink:0;}
+  .kpi{border:0.3mm solid #e7e3f7; border-radius:2mm; padding:1.2mm 1.8mm; min-width:13mm; text-align:center; background:#fff;}
+  .kpi b{display:block; font-family:'Space Grotesk',Inter,sans-serif; font-size:12pt; line-height:1.15; font-variant-numeric:tabular-nums;}
+  .kpi span{display:block; font-size:5.8pt; text-transform:uppercase; letter-spacing:.04em; color:#5b5470; white-space:nowrap;}
+  .kpi.good b{color:#00a08e;} .kpi.bad b{color:#e8264b;} .kpi.dim b{color:#cdc8de;}
+  .kpi.main{background:#f3f1fc; border-color:#e0dbf6;} .kpi.main b{color:#4b3fc0;}
+
+  /* Calendarios */
+  .cals{display:grid; grid-template-columns:1fr 1fr; gap:4mm 7mm;}
+  .cal{break-inside:avoid;}
+  .cal-title{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:1mm; padding:0 0.7mm;}
+  .cal-title h3{font-size:10.5pt; color:#4b3fc0;}
+  .cal-sum{font-size:6.8pt; color:#5b5470;}
+  .cal-sum b{color:#161326;}
+  table.cal-t{width:100%; table-layout:fixed; border-collapse:separate; border-spacing:0.7mm;}
+  .cal-t th{font-size:6.2pt; text-transform:uppercase; color:#8a84a3; font-weight:700; padding:0.4mm 0 0; letter-spacing:.06em; text-align:left; padding-left:1.2mm;}
+  .cal-t th.we{color:#b3add0;}
+  .cal-t td{height:13.6mm; vertical-align:top; border-radius:1.3mm; padding:0.9mm 1.1mm; background:#fff; border:0.25mm solid #e7e3f7; overflow:hidden;}
+  .cal-t td.out{background:transparent; border:none;}
+  .cal-t td.we{background:#fbfaff;}
+  .dh{display:flex; justify-content:space-between; align-items:center; height:3.2mm; margin-bottom:0.5mm;}
+  .dn{font-weight:700; font-size:7.2pt; color:#161326; font-variant-numeric:tabular-nums;}
+  .chip{display:inline-block; font-size:5.4pt; font-weight:700; color:#0072cc; background:#e3f2ff; border-radius:0.8mm; padding:0.15mm 0.9mm; letter-spacing:.02em; line-height:1.4;}
+  .chip.cd{color:#8a3ffc; background:#f1e8ff;}
+  .chip.pjs{color:#b35c00; background:#fff0de;}
+  .chip.l75{color:#00796b; background:#ddf5f1;}
+  .t{font-size:6.6pt; font-variant-numeric:tabular-nums; white-space:nowrap; letter-spacing:-.015em; line-height:1.35; color:#2b2740;}
+  .t + .t{border-top:0.2mm dotted #d9d3f6; margin-top:0.3mm; padding-top:0.3mm;}
+  .cal-t td.just{border-left:1mm solid #00b39e;}
+  .cal-t td.just .t{color:#00a08e; font-weight:700;}
+  .cal-t td.injust{border-left:1mm solid #ff2d55; background:#fff5f7;}
+  .cal-t td.injust .t{color:#e8264b; font-weight:700;}
+  .st-label{font-size:6.6pt; font-weight:700; line-height:1.2; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;}
+  .cal-t td.st-vac{background:#fff2da; border-color:#ffe2a8;} .st-vac .st-label{color:#8a5a11;}
+  .cal-t td.st-lic{background:#ffe1e8; border-color:#ffc2cf;} .st-lic .st-label{color:#9c2f2f;}
+  .cal-t td.st-fra{background:#f1f0f5; border-color:#e4e2ec;} .st-fra .st-label{color:#6b6582;}
+  .cal-t td.st-aus{background:#ffe3ee; border-color:#ffc4da;} .st-aus .st-label{color:#a3145a;}
+  .cal-t td.st-fer{background:#ece9fb; border-color:#d9d3f6;} .st-fer .st-label{color:#4b3fc0;}
+  .cal-t td.st-otro{background:#e3f7f4; border-color:#bfece5;} .st-otro .st-label{color:#00695c; font-weight:600;}
+  .cal-t td.miss{border:0.3mm dashed #ffb020; background:#fffbf2;}
+  .miss-txt{font-size:6pt; color:#b07a0e; font-weight:600;}
+  .cal-t td.fut .dn, .cal-t td.nd .dn{color:#c5c0d8;}
+  .legend-wrap{margin-top:3mm; padding-top:2mm; border-top:0.25mm solid #f0eef8; break-inside:avoid;}
+
+  /* Monitoreos / inbox / productividad */
+  .blocks{display:grid; grid-template-columns:1fr 1fr; gap:6mm; margin-top:5mm;}
+  .block{break-inside:avoid; border:0.3mm solid #e7e3f7; border-radius:2mm; overflow:hidden;}
+  .block-h{display:flex; justify-content:space-between; align-items:center; background:#f3f1fc; padding:1.6mm 2.6mm; font-family:'Space Grotesk',Inter,sans-serif; font-weight:700; font-size:8.5pt; color:#4b3fc0;}
+  .block-h .count{font-family:Inter,sans-serif; font-size:7pt; background:#fff; color:#4b3fc0; border-radius:3mm; padding:0.3mm 2mm; font-weight:700;}
+  table.lst{width:100%; border-collapse:collapse;}
+  .lst td{padding:1.3mm 2.6mm; border-top:0.2mm solid #f0eef8; vertical-align:top; font-size:7.4pt;}
+  .lst td.f{white-space:nowrap; width:13mm; font-weight:600; font-variant-numeric:tabular-nums;}
+  .lst td.p{white-space:nowrap; width:22mm;}
+  .lst td.o{color:#3d3852;}
+  .lst .empty{color:#8a84a3; font-style:italic; text-align:center; padding:3mm;}
+  .tag{display:inline-block; padding:0.3mm 1.8mm; border-radius:3mm; font-size:6.4pt; font-weight:700;}
+  .p-nm{background:#ffe1e8; color:#c4223f;} .p-b{background:#fff2da; color:#8a5a11;}
+  .p-mb{background:#dcfaf6; color:#00897b;} .p-e{background:#ece9fb; color:#4b3fc0;}
+  .prod{margin-top:5mm; break-inside:avoid;}
+  table.sum.prod-t td, table.sum.prod-t th{font-size:7.4pt;}
+  table.sum.prod-t th{font-size:6.4pt;}
+  table.sum.prod-t td.dash{color:#cdc8de;}
+  .foot-note{margin-top:4mm; font-size:6.8pt; color:#8a84a3;}
+  `;
+}
+
+function repChipHtml(tarea){
+  if(!tarea) return '';
+  const abbr = TAREA_ABBR[tarea] || tarea;
+  const cls = ({'Comunidad Digital':'cd','Planes JS':'pjs','Linea 7075':'l75'})[tarea] || '';
+  return `<span class="chip ${cls}">${esc(abbr)}</span>`;
+}
+
+function repLeyendaHtml(){
+  return `<div class="legend">
+    <span><i class="lg"></i>En horario</span>
+    <span><i class="lg just"></i>Fuera de horario · justificado</span>
+    <span><i class="lg injust"></i>Fuera de horario · sin justificar</span>
+    <span><i class="lg vac"></i>Vacaciones</span>
+    <span><i class="lg lic"></i>Licencia médica</span>
+    <span><i class="lg fra"></i>Franco</span>
+    <span><i class="lg aus"></i>Ausente</span>
+    <span><i class="lg fer"></i>Feriado</span>
+    <span><i class="lg otro"></i>Otro</span>
+    <span><i class="lg miss"></i>Día sin cargar</span>
+    <span>${Object.keys(TAREA_ABBR).map(t=>`${repChipHtml(t)}${esc(TAREA_LABEL[t]||t)}`).join(' &nbsp; ')}</span>
+  </div>`;
+}
+
+function repAvatar(nombre){
+  return `<span class="av" style="background:${avatarColor(nombre)}">${esc(initials(nombre))}</span>`;
+}
+
+function repNum(v, cls){
+  return v ? `<span class="${cls||''}">${v}</span>` : `<span class="zero">0</span>`;
+}
+
+// Calendario de un mes (semana de lunes a domingo) para un auxiliar
+function repCalendarioMes(anio, mes, auxId, byAuxDia, hoyISO){
+  const offset = (new Date(anio, mes, 1).getDay() + 6) % 7; // lunes = 0
+  const nDias = daysInMonth(anio, mes);
+  const celdas = [];
+  for(let i=0; i<offset; i++) celdas.push('<td class="out"></td>');
+  for(let d=1; d<=nDias; d++){
+    const fecha = `${anio}-${pad(mes+1)}-${pad(d)}`;
+    const dow = (offset + d - 1) % 7; // 5 = sábado, 6 = domingo
+    const r = byAuxDia[auxId + '_' + fecha];
+    const cls = [];
+    if(dow >= 5) cls.push('we');
+    let chip = '', body = '';
+    if(!r){
+      if(fecha > hoyISO) cls.push('fut');
+      else if(dow === 6) cls.push('nd');
+      else { cls.push('miss'); body = '<div class="miss-txt">Sin cargar</div>'; }
+    } else if(r.estado_especial){
+      const info = estadoInfo(r.estado_especial);
+      cls.push('st-' + info.cls);
+      body = `<div class="st-label">${esc(info.label)}</div>`;
+    } else {
+      if(r.estado_horario === 'justificado') cls.push('just');
+      else if(r.estado_horario === 'injustificado') cls.push('injust');
+      body = `<div class="t">${hhmm(r.hora_conexion)} – ${hhmm(r.hora_desconexion)}</div>`;
+      if(r.hora_conexion_2 || r.hora_desconexion_2) body += `<div class="t">${hhmm(r.hora_conexion_2)} – ${hhmm(r.hora_desconexion_2)}</div>`;
+      chip = repChipHtml(r.tarea);
+    }
+    const tip = r ? ` title="${esc(r.estado_especial || turnosTxt(r))}"` : '';
+    celdas.push(`<td class="${cls.join(' ')}"${tip}><div class="dh"><span class="dn">${d}</span>${chip}</div>${body}</td>`);
+  }
+  while(celdas.length % 7) celdas.push('<td class="out"></td>');
+  let filas = '';
+  for(let i=0; i<celdas.length; i+=7) filas += `<tr>${celdas.slice(i, i+7).join('')}</tr>`;
+  const dias = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  const head = dias.map((x,i)=>`<th class="${i>=5?'we':''}">${x}</th>`).join('');
+
+  const recsMes = Object.values(byAuxDia).filter(r => r.auxiliar_id === auxId && r.fecha.startsWith(`${anio}-${pad(mes+1)}`));
+  const s = calcStats(recsMes);
+  const partes = [`<b>${s.trabajados}</b> días`, `<b>${fmtHoras(s.minutos)}</b>`];
+  if(s.justificados) partes.push(`<span class="just">${s.justificados} just.</span>`);
+  if(s.sinJustificar) partes.push(`<span class="injust">${s.sinJustificar} sin just.</span>`);
+  if(s.vacaciones) partes.push(`${s.vacaciones} vac.`);
+  if(s.licencias) partes.push(`${s.licencias} lic.`);
+  if(s.ausentes) partes.push(`${s.ausentes} aus.`);
+
+  return `<div class="cal">
+    <div class="cal-title"><h3>${MESES[mes]} ${anio}</h3><div class="cal-sum">${partes.join(' · ')}</div></div>
+    <table class="cal-t"><thead><tr>${head}</tr></thead><tbody>${filas}</tbody></table>
+  </div>`;
+}
+
+function repListaRegistros(titulo, regs){
+  const ord = regs.slice().sort((a,b)=> a.fecha < b.fecha ? -1 : 1);
+  const rows = ord.length ? ord.map(r=>{
+    const f = new Date(r.fecha + 'T00:00:00');
+    const obs = (r.observacion || '').trim();
+    const obsCorta = obs.length > 170 ? obs.slice(0,167) + '…' : obs;
+    return `<tr>
+      <td class="f">${pad(f.getDate())}/${pad(f.getMonth()+1)}</td>
+      <td class="p">${r.puntaje ? `<span class="tag ${REP_PUNTAJE_CLS[r.puntaje]||'p-e'}">${esc(r.puntaje)}</span>` : '<span class="zero">—</span>'}</td>
+      <td class="o">${obsCorta ? esc(obsCorta) : '<span class="zero">Sin observación</span>'}</td></tr>`;
+  }).join('') : `<tr><td class="empty" colspan="3">Sin registros en el período</td></tr>`;
+  return `<div class="block">
+    <div class="block-h">${titulo}<span class="count">${ord.length}</span></div>
+    <table class="lst"><tbody>${rows}</tbody></table>
+  </div>`;
+}
+
+function repProductividadHtml(c, datosAux){
+  if(!datosAux) return '';
+  const { prodPorMes, tmoPorMes } = datosAux;
+  const v = x => (x == null || x === '') ? '<td class="dash">—</td>' : `<td>${esc(x)}</td>`;
+  let rows = '';
+  for(let m=c.mesDesde; m<=c.mesHasta; m++){
+    const p = prodPorMes[m+1] || {}, t = tmoPorMes[m+1] || {};
+    rows += `<tr><td class="n">${MESES[m]}</td>${v(p.tmo)}${v(p.llamados)}${v(p.gestiones_digitales)}${v(p.actividad_datos)}
+      <td class="sep ${t.att?'':'dash'}">${t.att ? esc(t.att) : '—'}</td>${v(t.acw)}${v(t.hold)}${v(t.tmo)}</tr>`;
+  }
+  return `<div class="prod">
+    <div class="sec-title">Productividad y detalle TMO</div>
+    <table class="sum prod-t">
+      <thead>
+        <tr><th class="grp n"></th><th class="grp" colspan="4">Productividad mensual</th><th class="grp sep" colspan="4">Detalle TMO</th></tr>
+        <tr><th class="n">Mes</th><th>TMO</th><th>Llamados</th><th>Gestiones digitales</th><th>Actividad de datos</th><th class="sep">ATT</th><th>ACW</th><th>HOLD</th><th>TMO</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+function buildReportePdfHtml(c, opts){
+  opts = opts || {};
+  const hoy = opts.hoyISO || todayISO();
+  const periodoTxt = c.esPeriodo ? `${MESES[c.mesDesde]} – ${MESES[c.mesHasta]} ${c.anio}` : `${MESES[c.mesDesde]} ${c.anio}`;
+  const fechaGenerado = opts.fechaGenerado || new Date().toLocaleString('es-AR', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
+  const unSolo = c.auxiliares.length === 1;
+  const registros = Object.values(c.byAuxDia);
+  const prodPorAux = {};
+  (opts.prodDatos || []).forEach(d => prodPorAux[d.auxiliar.id] = d);
+
+  const statsDe = (auxId) => calcStats(registros.filter(r => r.auxiliar_id === auxId));
+  const monDe = (auxId) => c.monData.filter(r => r.auxiliar_id === auxId);
+  const inbDe = (auxId) => c.inbData.filter(r => r.auxiliar_id === auxId);
+
+  // ---- Portada ----
+  const cover = `<div class="cover">
+    <div>
+      <div class="eyebrow">Entrena2 · CAT · Jerárquicos Salud</div>
+      <h1>${unSolo ? esc(c.auxiliares[0].nombre) : 'Reporte de Auxiliares'}</h1>
+      <div class="period">${unSolo ? 'Reporte de auxiliar · ' : ''}${periodoTxt}</div>
+    </div>
+    <div class="meta">
+      ${opts.supervisor ? `Supervisor/a: <b>${esc(opts.supervisor)}</b><br>` : ''}
+      ${unSolo ? '' : `Auxiliares: <b>${c.auxiliares.length}</b><br>`}
+      Generado el ${esc(fechaGenerado)}
+    </div>
+  </div>`;
+
+  // ---- Resumen del equipo (solo con más de un auxiliar) ----
+  let resumenEquipo = '';
+  if(!unSolo){
+    const tot = calcStats([]); let totMon = 0, totInb = 0;
+    const filas = c.auxiliares.map(a=>{
+      const s = statsDe(a.id), nMon = monDe(a.id).length, nInb = inbDe(a.id).length;
+      ['trabajados','minutos','enHorario','justificados','sinJustificar','vacaciones','licencias','francos','ausentes','feriados','otros'].forEach(k=> tot[k] += s[k]);
+      totMon += nMon; totInb += nInb;
+      return `<tr>
+        <td class="n">${repAvatar(a.nombre)}${esc(a.nombre)}${a.activo ? '' : ' <span class="zero">(inactivo)</span>'}</td>
+        <td>${repNum(s.trabajados)}</td><td>${s.minutos ? fmtHoras(s.minutos) : '<span class="zero">—</span>'}</td>
+        <td class="sep">${repNum(s.justificados,'just')}</td><td>${repNum(s.sinJustificar,'injust')}</td>
+        <td class="sep">${repNum(s.vacaciones)}</td><td>${repNum(s.licencias)}</td><td>${repNum(s.francos)}</td><td>${repNum(s.ausentes)}</td><td>${repNum(s.feriados + s.otros)}</td>
+        <td class="sep">${repNum(nMon)}</td><td>${repNum(nInb)}</td></tr>`;
+    }).join('');
+    resumenEquipo = `
+      <div class="sec-title">Resumen del equipo <small>${periodoTxt}</small></div>
+      <table class="sum">
+        <thead>
+          <tr><th class="grp n"></th><th class="grp" colspan="2">Asistencia</th><th class="grp sep" colspan="2">Fuera de horario</th><th class="grp sep" colspan="5">Ausencias y novedades</th><th class="grp sep" colspan="2">Seguimiento</th></tr>
+          <tr><th class="n">Auxiliar</th><th>Días trab.</th><th>Horas</th><th class="sep">Justif.</th><th>Sin justif.</th><th class="sep">Vacac.</th><th>Licencias</th><th>Francos</th><th>Ausencias</th><th>Feriados / otros</th><th class="sep">Monitoreos</th><th>Inbox / devol.</th></tr>
+        </thead>
+        <tbody>${filas}
+          <tr class="total"><td class="n">Total equipo</td><td>${tot.trabajados}</td><td>${fmtHoras(tot.minutos)}</td>
+          <td class="sep">${repNum(tot.justificados,'just')}</td><td>${repNum(tot.sinJustificar,'injust')}</td>
+          <td class="sep">${tot.vacaciones}</td><td>${tot.licencias}</td><td>${tot.francos}</td><td>${tot.ausentes}</td><td>${tot.feriados + tot.otros}</td>
+          <td class="sep">${totMon}</td><td>${totInb}</td></tr>
+        </tbody>
+      </table>
+      <div class="legend-wrap" style="border-top:none; margin-top:0;">${repLeyendaHtml()}</div>
+      <div class="foot-note">En las páginas siguientes: una página por auxiliar con su calendario de conexión y desconexión, monitoreos e inbox/devoluciones${opts.prodDatos ? ', y productividad' : ''}.</div>`;
+  }
+
+  // ---- Una sección por auxiliar ----
+  const secciones = c.auxiliares.map((a, idx)=>{
+    const s = statsDe(a.id), mons = monDe(a.id), inbs = inbDe(a.id);
+    const kpi = (val, label, cls) => `<div class="kpi ${cls||''}"><b>${val}</b><span>${label}</span></div>`;
+    const kpis = [
+      kpi(s.trabajados, 'Días trab.', 'main'),
+      kpi(fmtHoras(s.minutos), 'Horas', 'main'),
+      kpi(s.justificados, 'Fuera h. just.', s.justificados ? 'good' : 'dim'),
+      kpi(s.sinJustificar, 'Fuera h. sin just.', s.sinJustificar ? 'bad' : 'dim'),
+      kpi(s.vacaciones, 'Vacaciones', s.vacaciones ? '' : 'dim'),
+      kpi(s.licencias, 'Licencias', s.licencias ? '' : 'dim'),
+      kpi(s.ausentes, 'Ausencias', s.ausentes ? 'bad' : 'dim'),
+      kpi(mons.length, 'Monitoreos', mons.length ? '' : 'dim'),
+      kpi(inbs.length, 'Inbox/devol.', inbs.length ? '' : 'dim'),
+    ].join('');
+    let cals = '';
+    for(let m=c.mesDesde; m<=c.mesHasta; m++) cals += repCalendarioMes(c.anio, m, a.id, c.byAuxDia, hoy);
+    const tareas = Object.entries(s.tareas).sort((x,y)=>y[1]-x[1]).map(([t,n])=>`${esc(TAREA_LABEL[t]||t)} (${n} ${n===1?'día':'días'})`).join(' · ');
+
+    return `<section class="aux ${idx===0 && unSolo ? 'first' : ''}">
+      ${unSolo ? '' : `<div class="aux-head">
+        ${repAvatar(a.nombre)}
+        <div><h2>${esc(a.nombre)}</h2><div class="sub">${periodoTxt}</div>${tareas ? `<div class="sub">${tareas}</div>` : ''}</div>
+        <div class="kpis">${kpis}</div>
+      </div>`}
+      ${unSolo ? `<div class="aux-head" style="border-bottom:none; padding-bottom:0;">${tareas ? `<div class="sub">Tareas: ${tareas}</div>` : ''}<div class="kpis">${kpis}</div></div>` : ''}
+      <div class="sec-title">Conexión y desconexión</div>
+      <div class="cals">${cals}</div>
+      <div class="legend-wrap">${repLeyendaHtml()}</div>
+      <div class="blocks">
+        ${repListaRegistros('Monitoreos', mons)}
+        ${repListaRegistros('Inbox y devoluciones', inbs)}
+      </div>
+      ${repProductividadHtml(c, prodPorAux[a.id])}
+    </section>`;
+  }).join('');
+
+  const barra = opts.vistaPrevia
+    ? `<div class="pbar"><button onclick="window.print()">⬇ Imprimir / Guardar como PDF</button><button class="sec" onclick="window.close()">Cerrar</button></div>`
+    : '';
+
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<title>Reporte Entrena2 · ${esc(unSolo ? c.auxiliares[0].nombre + ' · ' : '')}${periodoTxt}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>${repPdfCss()}</style>
+</head><body>
+${barra}
+<div class="doc">
+  ${cover}
+  ${resumenEquipo}
+  ${secciones}
+</div>
+</body></html>`;
+}
+
+// Abre el reporte en una ventana nueva. imprimir=true dispara el diálogo de impresión.
+async function abrirReporteVentana(imprimir){
   const c = window._reporteCache;
   if(!c){ toast('Esperá a que cargue el reporte', true); return; }
-  const incluirProd = document.getElementById('inclProdReporte').checked;
-  toast('Generando PDF…');
-
-  const theadMeses = (function(){
-    const grupos = [];
-    c.dias.forEach(fecha=>{
-      const d = new Date(fecha+'T00:00:00');
-      const label = `${MESES[d.getMonth()]} ${d.getFullYear()}`;
-      const last = grupos[grupos.length-1];
-      if(last && last.label===label) last.count++; else grupos.push({label,count:1});
-    });
-    if(grupos.length<=1) return '';
-    return `<tr><th class="name"></th>${grupos.map(g=>`<th colspan="${g.count}">${g.label}</th>`).join('')}</tr>`;
-  })();
-  const theadCols = `<th class="name">Auxiliar</th>` + c.dias.map(fecha=>{
-    const d = new Date(fecha+'T00:00:00');
-    const wd = d.toLocaleDateString('es-AR', {weekday:'short'});
-    return `<th>${d.getDate()}<br>${wd}</th>`;
-  }).join('');
-
-  const bodyRows = c.auxiliares.map(a=>{
-    let cells = `<td class="name">${a.nombre}</td>`;
-    c.dias.forEach(fecha=>{
-      const r = c.byAuxDia[a.id + '_' + fecha];
-      const isSunday = new Date(fecha+'T00:00:00').getDay() === 0;
-      if(!r){ cells += `<td class="muted">${isSunday ? '–' : ''}</td>`; }
-      else if(r.estado_especial){ cells += `<td>${r.estado_especial.slice(0,3)}</td>`; }
-      else {
-        const cls = r.estado_horario === 'justificado' ? 'hora-justificado' : (r.estado_horario === 'injustificado' ? 'hora-injustificado' : '');
-        const tareaAbbr = r.tarea ? (TAREA_ABBR[r.tarea] || r.tarea) : '';
-        cells += `<td>${turnosHtml(r, cls)}${tareaAbbr ? `<br><span class="muted" style="font-size:6px;">${tareaAbbr}</span>` : ''}</td>`;
-      }
-    });
-    return `<tr>${cells}</tr>`;
-  }).join('');
-
-  const tituloGrilla = 'Conexión y Desconexión';
-  const tablaConexionHtml = `<table><thead>${theadMeses}<tr>${theadCols}</tr></thead><tbody>${bodyRows}</tbody></table>`;
-
-  let resumenMensualHtml = '';
-  if(c.esPeriodo){
-    const headM = `<tr><th class="name">Auxiliar</th><th>Mes</th><th>Días trab.</th><th>Justif.</th><th>Sin justif.</th><th>Vacaciones</th><th>Licencias</th><th>Francos</th><th>Ausencias</th></tr>`;
-    let rowsM = '';
-    c.auxiliares.forEach(a=>{
-      for(let m=c.mesDesde; m<=c.mesHasta; m++){
-        const s = statsAuxMes(Object.values(c.byAuxDia), a.id, c.anio, m);
-        rowsM += `<tr><td class="name">${a.nombre}</td><td>${MESES[m]}</td><td>${s.trabajados}</td>
-          <td><span class="hora-justificado">${s.justificados}</span></td>
-          <td><span class="hora-injustificado">${s.sinJustificar}</span></td>
-          <td>${s.vacaciones}</td><td>${s.licencias}</td><td>${s.francos}</td><td>${s.ausentes}</td></tr>`;
-      }
-    });
-    resumenMensualHtml = `
-      <div class="section-title page-break">Resumen por mes</div>
-      <table><thead>${headM}</thead><tbody>${rowsM}</tbody></table>`;
-  }
-
-  const resumenRows = c.auxiliares.map(a=>{
-    const mons = c.monData.filter(r=>r.auxiliar_id===a.id);
-    const inbs = c.inbData.filter(r=>r.auxiliar_id===a.id);
-    return `<tr><td class="name">${a.nombre}</td><td>${mons.length}</td><td>${inbs.length}</td></tr>`;
-  }).join('');
-
-  let prodSections = '';
-  if(incluirProd){
-    const datos = await traerProdYTMO(c.auxiliares, c.anio);
-    datos.forEach(({auxiliar, prodPorMes, tmoPorMes})=>{
-      const mesesEnRango = MESES.map((m,i)=>({m,i})).filter(({i}) => i >= c.mesDesde && i <= c.mesHasta);
-      const prodRows = mesesEnRango.map(({m,i})=>{
-        const r = prodPorMes[i+1] || {};
-        return `<tr><td class="name">${m}</td><td>${r.tmo||'—'}</td><td>${r.llamados||'—'}</td><td>${r.gestiones_digitales||'—'}</td><td>${r.actividad_datos||'—'}</td></tr>`;
-      }).join('');
-      const tmoRows = mesesEnRango.map(({m,i})=>{
-        const r = tmoPorMes[i+1] || {};
-        return `<tr><td class="name">${m}</td><td>${r.att||'—'}</td><td>${r.acw||'—'}</td><td>${r.hold||'—'}</td><td>${r.tmo||'—'}</td></tr>`;
-      }).join('');
-      prodSections += `
-        <div class="section-title page-break">Productividad y Detalle TMO — ${auxiliar.nombre} (${c.anio})</div>
-        <div class="subsection">
-          <div class="subsection-title">Productividad mensual</div>
-          <table><thead><tr><th>Mes</th><th>TMO</th><th>Llamados</th><th>Gestiones Digitales</th><th>Actividad de datos</th></tr></thead><tbody>${prodRows}</tbody></table>
-        </div>
-        <div class="subsection subsection-tmo">
-          <div class="subsection-title subsection-title-tmo">Detalle TMO mensual</div>
-          <table><thead><tr><th>Mes</th><th>ATT</th><th>ACW</th><th>HOLD</th><th>TMO</th></tr></thead><tbody>${tmoRows}</tbody></table>
-        </div>`;
-    });
-  }
-
-  const auxFiltroTxt = c.auxiliares.length === 1 ? ` · ${c.auxiliares[0].nombre}` : '';
-  const periodoTxt = c.esPeriodo ? `${MESES[c.mesDesde]} – ${MESES[c.mesHasta]} ${c.anio}` : `${MESES[c.mesDesde]} ${c.anio}`;
-  const fechaGenerado = new Date().toLocaleString('es-AR');
-
-  const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
-<title>Reporte Entrena2 ${periodoTxt}</title>
-<style>
-  @page{ size:A4 landscape; margin:10mm; }
-  *{box-sizing:border-box;}
-  body{font-family:'Segoe UI',Arial,sans-serif; color:#161326; margin:0;}
-  .header{background:linear-gradient(120deg,#4b3fc0,#6c5ce7 55%,#ff3d81 130%); color:#fff; padding:14px 18px; border-radius:10px; margin-bottom:14px;}
-  .header h1{margin:0; font-size:19px;}
-  .header .sub{opacity:.92; font-size:12px; margin-top:2px;}
-  .section-title{font-size:13px; font-weight:700; color:#161326; margin:22px 0 8px; border-left:4px solid #6c5ce7; padding-left:8px;}
-  .subsection{margin-bottom:26px; padding-bottom:10px;}
-  .subsection-title{
-    display:inline-block; font-size:10.5px; font-weight:700; color:#4b3fc0;
-    background:#ece9fb; border-radius:20px; padding:4px 12px; margin:0 0 8px;
-  }
-  .subsection-title-tmo{ color:#a3145a; background:#ffe3ee; }
-  .subsection-tmo{ border-top:2px dashed #e7e3f7; padding-top:16px; margin-top:6px; }
-  table{width:100%; border-collapse:collapse; table-layout:fixed; margin-bottom:4px;}
-  th,td{border:1px solid #e7e3f7; padding:3px 2px; text-align:center; font-size:7.5px; overflow:hidden;}
-  th{background:#ece9fb; color:#4b3fc0; font-weight:700; text-transform:uppercase; font-size:7px;}
-  td.name{text-align:left; font-weight:600; font-size:8px; white-space:nowrap;}
-  tr:nth-child(even) td{background:#faf9fd;}
-  .hora-justificado{color:#00b39e; font-weight:800;}
-  .hora-injustificado{color:#ff2d55; font-weight:800;}
-  .muted{color:#5b5470;}
-  .page-break{page-break-before:always;}
-  footer{margin-top:10px; font-size:9px; color:#5b5470; text-align:right;}
-</style>
-</head><body>
-  <div class="header"><h1>Entrena2 · Reporte de Auxiliares</h1><div class="sub">${periodoTxt}${auxFiltroTxt}</div></div>
-
-  <div class="section-title">${tituloGrilla}</div>
-  ${tablaConexionHtml}
-
-  ${resumenMensualHtml}
-
-  <div class="section-title">Resumen de Monitoreos e Inbox/Devoluciones</div>
-  <table><thead><tr><th>Auxiliar</th><th>Monitoreos</th><th>Inbox/Devol.</th></tr></thead><tbody>${resumenRows}</tbody></table>
-
-  ${prodSections}
-
-  <footer>Generado el ${fechaGenerado} · Jerárquicos Salud · CAT</footer>
-</body></html>`;
-
+  if(!c.auxiliares.length){ toast('No hay auxiliares para el reporte', true); return; }
+  // La ventana se abre ANTES de cualquier await: si no, el navegador la bloquea como pop-up.
   const w = window.open('', '_blank');
-  if(!w){ toast('El navegador bloqueó la ventana de impresión. Habilitá pop-ups para este sitio.', true); return; }
-  w.document.write(html);
-  w.document.close();
-  w.onload = () => { w.focus(); w.print(); };
-});
+  if(!w){ toast('El navegador bloqueó la ventana. Habilitá pop-ups para este sitio.', true); return; }
+  w.document.write('<p style="font-family:Inter,Arial,sans-serif; padding:30px; color:#5b5470;">Generando reporte…</p>');
+  try{
+    const incluirProd = document.getElementById('inclProdReporte').checked;
+    const prodDatos = incluirProd ? await traerProdYTMO(c.auxiliares, c.anio) : null;
+    const html = buildReportePdfHtml(c, { prodDatos, supervisor: currentSupervisor, vistaPrevia: !imprimir });
+    w.document.open(); w.document.write(html); w.document.close();
+    if(imprimir){
+      const lanzar = () => {
+        const fuentes = (w.document.fonts && w.document.fonts.ready) ? w.document.fonts.ready : Promise.resolve();
+        fuentes.then(()=> setTimeout(()=>{ w.focus(); w.print(); }, 200));
+      };
+      if(w.document.readyState === 'complete') lanzar(); else w.addEventListener('load', lanzar);
+    }
+  }catch(e){
+    w.close();
+    toast('Error generando el reporte: ' + (e.message || e), true);
+  }
+}
+document.getElementById('btnExportPDF').addEventListener('click', ()=> abrirReporteVentana(true));
+document.getElementById('btnVistaPrevia').addEventListener('click', ()=> abrirReporteVentana(false));
+
 
 /* ---- Formato profesional de las hojas de Excel (ancho automático + encabezado en negrita) ---- */
 function xlsxAutoWidth(ws, extra=2){
